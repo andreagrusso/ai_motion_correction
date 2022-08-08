@@ -10,8 +10,6 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import os, glob
-import nibabel as nb
-from nilearn.image import new_img_like
 import pickle
 import numpy as np 
 
@@ -43,24 +41,22 @@ for sub in subs:
 
 #manipuate all the files to prepare for different training
 train_lim = int(np.floor((len(all_files)/100)*70))
-val_lim = int(np.floor((len(all_files)/100)*20))
-test_lim = int(np.floor((len(all_files)/100)*10))
+val_lim = int(np.floor((len(all_files)/100)*30))
 
 
 
-print(train_lim + val_lim + test_lim)
+
 
 #shuffle
 np.random.shuffle(all_files)
 
 training_files = all_files[:train_lim]
 validation_files = all_files[train_lim:train_lim+val_lim]
-testing_files = all_files[train_lim+val_lim:]
+#testing_files = all_files[train_lim+val_lim:]
 
 pickle.dump(training_files,open(os.path.join(datadir,'dcm_training_set.pkl'),'wb'))
 pickle.dump(validation_files,open(os.path.join(datadir,'dcm_validation_set.pkl'),'wb'))
-pickle.dump(testing_files,open(os.path.join(datadir,'dcm_testing_set.pkl'),'wb'))
-
+#
 
 #prepare the same data for google colab
 colab_training = []
@@ -87,15 +83,35 @@ for item in validation_files:
 
 pickle.dump(colab_validation,open(os.path.join(datadir,'dcm_colab_validation_set.pkl'),'wb'))
 
+ 
+#%% create the same file for the testing data
+
+sub_test = glob.glob(os.path.join(datadir,'test_P*'))
+all_testing_files = []
+
+for sub in sub_test:
     
+    #each sub contains three different experiments
+    experiments = glob.glob(os.path.join(sub,'*'))
+    
+    for exp in experiments:
+        
+        #get dcms files
+        dcms = sorted(glob.glob(os.path.join(exp,'DCM','*.dcm')))
+        tmp_list = [[dcms[i],dcms[0]] for i in range(1,len(dcms))]
+    
+        all_testing_files += tmp_list
+
+pickle.dump(all_testing_files,open(os.path.join(datadir,'dcm_testing_set.pkl'),'wb'))
+   
 colab_testing = []
-for item in testing_files:
+for item in all_testing_files:
     #replace the parent directory
     tmp_item0 = item[0].replace(datadir,colabdir)
     tmp_item1 = item[1].replace(datadir,colabdir)
     #replce '\\" with "/"
     colab_testing.append([tmp_item0.replace("\\","/"),
-                           tmp_item1.replace("\\","/")])
+                            tmp_item1.replace("\\","/")])
     
 
 pickle.dump(colab_testing,open(os.path.join(datadir,'dcm_colab_testing_set.pkl'),'wb'))
