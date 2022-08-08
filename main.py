@@ -13,7 +13,6 @@ import tensorflow as tf
 from tensorflow.keras.utils import plot_model
 
 import os, pickle, pydicom, time
-import numpy as np
 import matplotlib.pyplot as plt
 
 
