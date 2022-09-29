@@ -101,7 +101,7 @@ def VoxMorphAffine():
                               #use_bias = False,
                               name='rot_matrix')(conv7)
 
-    #W_d = tf.keras.layers.Dropout(0.3)(W)
+    W = tf.keras.layers.Dropout(0.3)(W)
     
     # translation params
     b = tf.keras.layers.Dense(units=3, 
@@ -109,7 +109,7 @@ def VoxMorphAffine():
                               trainable=True,
                               #use_bias = False,
                               name='trans_matrix')(conv7)
-    #b_d = tf.keras.layers.Dropout(0.3)(b)
+    b = tf.keras.layers.Dropout(0.3)(b)
 
     
     #get the affine matrix with this layer

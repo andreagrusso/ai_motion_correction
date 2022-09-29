@@ -9,9 +9,10 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 
 """
 
-import os, glob
-import pickle
-import numpy as np 
+import os, glob, pydicom, pickle
+import numpy as np
+from other_functions import mosaic_to_mat, mat_to_mosaic
+from scipy.stats import zscore 
 
 #%%
 datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/dcm'
@@ -24,15 +25,18 @@ all_files = []
 #multiple subjects
 subs = glob.glob(os.path.join(datadir,'train','P*'))
 
+
+#first load, create time series, zscore, and re-write dcm
 for sub in subs:
     
     #each sub contains three different experiments
     experiments = glob.glob(os.path.join(sub,'*'))
     
     for exp in experiments:
-        
+
         #get dcms files
-        dcms = sorted(glob.glob(os.path.join(exp,'DCM','*.dcm')))
+        dcms = sorted(glob.glob(os.path.join(exp,'DCM','*.dcm')))        
+        
         tmp_list = [[dcms[i],dcms[0]] for i in range(0,len(dcms))]
     
         all_files += tmp_list
@@ -86,14 +90,14 @@ pickle.dump(colab_validation,open(os.path.join(datadir,'dcm_colab_validation_set
  
 #%% create the same file for the testing data
 
-sub_test = glob.glob(os.path.join(datadir,'test','D*'))
+sub_test = glob.glob(os.path.join(datadir,'test'))
 all_testing_files = []
 
 for sub in sub_test:
      
-        
+    
     #get dcms files
-    dcms = sorted(glob.glob(os.path.join(sub,'*.dcm')))
+    dcms = sorted(glob.glob(os.path.join(sub,'DCM','*.dcm')))
     tmp_list = [[dcms[i],dcms[0]] for i in range(0,len(dcms))]
 
     all_testing_files += tmp_list

@@ -13,7 +13,7 @@ from tensorflow.keras.utils import Sequence
 import numpy as np
 import pydicom
 from scipy.stats import zscore
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
 from scipy.spatial.transform import Rotation
 from scipy.ndimage import affine_transform
 
@@ -111,15 +111,17 @@ class DataGenerator_train(Sequence):
                 movable_mat = self._augment_motion(movable_mat)
                 
             #scaling the data
-            scaler = RobustScaler()
+            scaler = MinMaxScaler()
             scaled_mov_data = scaler.fit_transform(movable_mat.flatten().reshape(-1,1)).reshape(movable_mat.shape)
             scaled_targ_data = scaler.fit_transform(target_mat.flatten().reshape(-1,1)).reshape(target_mat.shape)
-            #scaled_mov_data = zscore(movable_mat.flatten().reshape(-1,1)).reshape(movable_mat.shape)
-            #scaled_targ_data = zscore(target_mat.flatten().reshape(-1,1)).reshape(target_mat.shape)
+            # z_scaled_mov_data = zscore(movable_mat.flatten().reshape(-1,1)).reshape(movable_mat.shape)
+            # z_scaled_targ_data = zscore(target_mat.flatten().reshape(-1,1)).reshape(target_mat.shape)
+            #scaled_mov_data = movable_mat
+            #scaled_targ_data = target_mat
             
             # #mask the data #median as threshold
-            scaled_mov_data[scaled_mov_data<np.percentile(scaled_mov_data.flatten(),20)]=0
-            scaled_targ_data[scaled_targ_data<np.percentile(scaled_targ_data.flatten(),20)]=0
+            scaled_mov_data[scaled_mov_data<np.percentile(scaled_mov_data.flatten(),50)]=0
+            scaled_targ_data[scaled_targ_data<np.percentile(scaled_targ_data.flatten(),50)]=0
 
             
            
@@ -326,15 +328,15 @@ class DataGenerator_val(Sequence):
             
 
             #scaling the data
-            scaler = RobustScaler()
+            scaler = MinMaxScaler()
             scaled_mov_data = scaler.fit_transform(movable_mat.flatten().reshape(-1,1)).reshape(movable_mat.shape)
             scaled_targ_data = scaler.fit_transform(target_mat.flatten().reshape(-1,1)).reshape(target_mat.shape)
             #scaled_mov_data = zscore(movable_mat.flatten().reshape(-1,1)).reshape(movable_mat.shape)
             #scaled_targ_data = zscore(target_mat.flatten().reshape(-1,1)).reshape(target_mat.shape)
             
             # #mask the data #median as threshold
-            scaled_mov_data[scaled_mov_data<np.percentile(scaled_mov_data.flatten(),20)]=0
-            scaled_targ_data[scaled_targ_data<np.percentile(scaled_targ_data.flatten(),20)]=0
+            scaled_mov_data[scaled_mov_data<np.percentile(scaled_mov_data.flatten(),50)]=0
+            scaled_targ_data[scaled_targ_data<np.percentile(scaled_targ_data.flatten(),50)]=0
 
             
            
@@ -401,3 +403,12 @@ class DataGenerator_val(Sequence):
                                     axis=-1)    
          
         return input_pair
+    
+    
+    
+# import matplotlib.pyplot as plt   
+# f,ax = plt.subplots(1,2)
+# ax[0].imshow((movable_mat-target_mat)[:,:,32], cmap ='Greys_r')
+# ax[1].imshow((scaled_mov_data-scaled_targ_data)[:,:,32], cmap = 'Greys_r')
+# ax[1,0].imshow((m_scaled_mov_data-m_scaled_targ_data)[:,:,32], cmap='Greys_r')
+# ax[1,1].imshow((z_scaled_mov_data-z_scaled_targ_data)[:,:,32], cmap='Greys_r')
