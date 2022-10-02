@@ -27,7 +27,7 @@ class DownConv3D(nn.Module):
             nn.LeakyReLU()
             )
         
-    def forward(self, tensord_data):
+    def forward(self, tensor_data):
         
         return self.conv_3d_block(tensor_data)
         
@@ -45,7 +45,7 @@ class UpConv3D(nn.Module):
             nn.LeakyReLU()
             )
         
-    def forward(self, tensord_data):
+    def forward(self, tensor_data):
         
         return self.conv_3d_block(tensor_data)
 
@@ -94,7 +94,7 @@ class AffineNet(nn.Module):
       self.rot_params = linear_layer(512, 9, 'tanh', 0.3)
       
       #dense layer for the rotation params
-      self.trans_params = linear_layer(512, 9, 'linear', 0.3)
+      self.trans_params = linear_layer(512, 3, 'linear', 0.3)
       
       #from 12 to 512 again
       self.linear_before_dec = nn.Linear(12,512)
