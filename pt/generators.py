@@ -15,8 +15,10 @@ import numpy as np
 import pydicom
 
 from util_functions import mosaic_to_mat
+import numpy as np
 
 #%%
+
 class Training_dataset(torch.utils.data.Dataset):
     
     """Generates data for Pytorch
@@ -67,22 +69,26 @@ class Training_dataset(torch.utils.data.Dataset):
         zeropad_mov = padding(scaled_mov)
         zeropad_trg = padding(scaled_trg)
         
-        if sum(mov_mat-trg_mat)!=0:
+        if np.sum(mov_mat-trg_mat)!=0:
         
             #ranfdom affine -5:5 degree and mm
             affine_aug = tio.transforms.RandomAffine(scales=0,
-                                               degrees=5,
-                                               translation=5,
+                                               degrees=[np.random.uniform(5),
+                                                        np.random.uniform(5),
+                                                        np.random.uniform(5)],
+                                               translation=[np.random.uniform(5),
+                                                        np.random.uniform(5),
+                                                        np.random.uniform(5)],
                                                isotropic=True)
             
             aug_zeropad_mov = affine_aug(zeropad_mov)
-            aug_zeropad_trg = affine_aug(zeropad_trg)
+            
                    
     
-            return [aug_zeropad_mov,aug_zeropad_trg],aug_zeropad_trg
+            return zeropad_trg, aug_zeropad_mov
         
         else:
-            return [zeropad_mov,zeropad_trg],zeropad_trg
+            return zeropad_trg, zeropad_mov
         
 
 class Validation_dataset(torch.utils.data.Dataset):
@@ -138,7 +144,7 @@ class Validation_dataset(torch.utils.data.Dataset):
         
                
 
-        return [zeropad_mov,zeropad_trg],zeropad_trg
+        return zeropad_trg,zeropad_mov
 
   
 # # import matplotlib.pyplot as plt   

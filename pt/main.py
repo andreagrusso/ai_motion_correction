@@ -9,41 +9,29 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 
 """
 
-import torch
-import torch.nn as nn
+import torch, os, pickle
 from torch.optim import Adam
 import nibabel as nb
-import os
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
  
 from network import AffineNet
 from losses import NCC, regularizer_rot_matrix
+from generators import Training_dataset, Validation_dataset
 
 
-#%%
+#%% Data import
 datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'
 
-# raw_input_1 = nb.load(os.path.join(datadir,'sub-03_0-141.nii.gz')).get_fdata()[:,:,:,0]
-# raw_input_2 = nb.load(os.path.join(datadir,'sub-03_0-141.nii.gz')).get_fdata()[:,:,:,0]
+training_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_training_set.pkl'), 'rb'))
+validation_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_validation_set.pkl'), 'rb'))
+testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_testing_set.pkl'),'rb'))
 
-# scaler = StandardScaler()
-# scaled_input_1 = scaler.fit_transform(raw_input_1.flatten().reshape(-1,1)).reshape(raw_input_1.shape)
-# scaled_input_2 = scaler.fit_transform(raw_input_2.flatten().reshape(-1,1)).reshape(raw_input_2.shape)
+print('Training size:',len(training_files))
+print('Validation size:',len(validation_files))
+print('Testing size:',len(testing_files))
 
-# scaled_input_1 = np.pad(scaled_input_1,pad_width=((32,32),(32,32),(44,44)),constant_values=0)
-# scaled_input_2 = np.pad(scaled_input_2,pad_width=((32,32),(32,32),(44,44)),constant_values=0)
-
-# input_1 = torch.from_numpy(scaled_input_1).float()
-# input_2 = torch.from_numpy(scaled_input_2).float()
-
-
-
-# input_1 = input_1[None, None, :]
-# input_2 = input_2[None, None, :]
-
-num_epochs = 20
+#%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
 loss_fn = NCC()#nn.MSELoss()
@@ -52,43 +40,81 @@ model = AffineNet()
 
 #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #print("The model will be running on", device, "device")
-device='cpu'
-# Convert model parameters and buffers to CPU or Cuda
-model.to(device)
-input_1.to(device)
-input_2.to(device)
+#device='cpu'
+
+#%% Optimizer
 
 optimizer = Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
 
-for epoch in range(num_epochs):  # loop over the dataset multiple times
-    running_loss = 0.0
-    running_acc = 0.0
+#%%
 
+max_epochs = 3
+params = {'batch_size': 4,
+          'shuffle': True}
+
+
+training_set = Training_dataset(training_files[:100], (128,128,128))
+validation_set = Validation_dataset(validation_files[:100], (128,128,128))
+
+training_generator = torch.utils.data.DataLoader(training_set, **params)
+validation_generator = torch.utils.data.DataLoader(validation_set, **params)
+
+
+for epoch in range(max_epochs):
+
+    print('##################################################')
+    print('############# TRAINING ###########################')
+    #training    
+    for fixed, movable in training_generator:   
         
-    # get the inputs
-    #images = Variable(images.to(device))
-   # labels = Variable(labels.to(device))
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        # predict classes using images from the training set
+        outputs = model(fixed,movable)
+        # compute the loss based on model output and real labels
+        loss_image = loss_fn.loss(outputs[0], fixed['data'])#torch.nn.MSELoss()(outputs[0], fixed['data'])##
+        loss_rot_params = loss_matrix.loss(outputs[1])
+        # backpropagate the loss
+        print('Loss image:', loss_image)
+        print('loss matrix:', loss_rot_params)
+        loss = loss_image + loss_rot_params
+        loss.backward()
+        # adjust parameters based on the calculated gradients
+        optimizer.step()
+        
 
-    # zero the parameter gradients
-    optimizer.zero_grad()
-    # predict classes using images from the training set
-    outputs = model(input_1,input_2)
-    # compute the loss based on model output and real labels
-    loss_image = torch.nn.MSELoss()(outputs[0], input_1)#loss_fn.loss(outputs[0], input_1)#
-    loss_rot_params = loss_matrix.loss(outputs[1])
-    # backpropagate the loss
-    print('Loss image:', loss_image)
-    print('loss matrix:', loss_rot_params)
-    loss = loss_image + loss_rot_params
-    loss.backward()
-    # adjust parameters based on the calculated gradients
-    optimizer.step()
+    print('###################################################')
+    print('############# VALIDATION ##########################')
+    #validation
+    for fixed_val, movable_val in validation_generator:   
+        
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        # predict classes using images from the training set
+        outputs = model(fixed_val,movable_val)
+        # compute the loss based on model output and real labels
+        loss_image = torch.nn.MSELoss()(outputs[0], fixed_val['data'])#loss_fn.loss(outputs[0], input_1)#
+        loss_rot_params = loss_matrix.loss(outputs[1])
+        print('Loss image:', loss_image)
+        print('loss matrix:', loss_rot_params)
+  
     
   
     
-f, ax = plt.subplots(1,2)
-ax[0].imshow(np.squeeze(input_2.detach().numpy())[:,:,64]-np.squeeze(input_1.detach().numpy())[:,:,64], cmap='Greys_r')
-ax[1].imshow(np.squeeze(outputs[0].detach().numpy())[:,:,64]-np.squeeze(input_1.detach().numpy())[:,:,64], cmap='Greys_r') 
+f, ax = plt.subplots(2,params['batch_size'])
 
-print(outputs[1])
-print(outputs[2])   
+orig_diff = np.squeeze(movable_val['data']-fixed_val['data'].detach().numpy())
+aligned_diff = np.squeeze(outputs[0].detach().numpy()-fixed_val['data'].detach().numpy())
+
+for i,batch in enumerate(range(params['batch_size'])):
+    
+    ax[0,i].imshow(orig_diff[i,:,:,64], cmap='Greys_r')
+    ax[1,i].imshow(aligned_diff[i,:,:,64], cmap='Greys_r')
+    
+
+    
+#ax[0].imshow(np.squeeze(movable_val['data'].detach().numpy())[2,:,:,64]-np.squeeze(fixed_val['data'].detach().numpy())[2,:,:,64], cmap='Greys_r')
+#ax[1].imshow(np.squeeze(outputs[0].detach().numpy())[2,:,:,64]-np.squeeze(fixed_val['data'].detach().numpy())[2,:,:,64], cmap='Greys_r') 
+
+# print(outputs[1])
+# print(outputs[2])   

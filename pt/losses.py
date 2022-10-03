@@ -15,21 +15,33 @@ import numpy as np
 
 def elem_sym_polys_of_eigen_values(M):
     
-    sigma1 = torch.trace(M) #sum across diagonal
+    #to calculate quickly the trace on batch. Sum across diagonal
+    sigma1 = torch.einsum('bii->b', M) 
     
-    sigma2 = torch.sum(
-        torch.Tensor([M[0,0]*M[1,1], 
-                      M[1,1]*M[2,2], 
-                      M[2,2]*M[0,0]])) - torch.sum(torch.Tensor([M[0,1]*M[1,0], 
-                                                    M[1,2]*M[2,1], 
-                                                    M[2,0]*M[0,2]]))
-                                    
-    sigma3 = torch.sum(torch.Tensor([M[0,0]*M[1,1]*M[2,2],
-                                    M[0,1]*M[1,2]*M[2,0],
-                                    M[0,2]*M[1,0]*M[2,1]])
-                       ) - torch.sum(torch.Tensor([M[0,0]*M[1,2]*M[2,1],
-                                                   M[0,1]*M[1,0]*M[2,2],
-                                                   M[0,2]*M[1,1]*M[2,0]]))
+    
+    sigma_2_a = torch.sum(torch.stack((M[:,0,0]*M[:,1,1],
+                                      M[:,1,1]*M[:,2,2],
+                                      M[:,2,2]*M[:,0,0])), dim=0)
+    
+    sigma_2_b = torch.sum(torch.stack((M[:,0,1]*M[:,1,0], 
+                                        M[:,1,2]*M[:,2,1], 
+                                        M[:,2,0]*M[:,0,2])),dim=0)
+    
+    sigma2 = torch.sum(torch.stack((sigma_2_a,-1*sigma_2_b)), dim=0) 
+    
+
+
+
+    sigma_3_a = torch.sum(torch.stack((M[:,0,0]*M[:,1,1]*M[:,2,2],
+                                    M[:,0,1]*M[:,1,2]*M[:,2,0],
+                                    M[:,0,2]*M[:,1,0]*M[:,2,1])), dim = 0)
+
+    sigma_3_b = torch.sum(torch.stack((M[:,0,0]*M[:,1,2]*M[:,2,1],
+                                M[:,0,1]*M[:,1,0]*M[:,2,2],
+                                M[:,0,2]*M[:,1,1]*M[:,2,0])), dim = 0) 
+                               
+    sigma3 = torch.sum(torch.stack((sigma_3_a,-1*sigma_3_b)), dim=0)
+    
     return sigma1, sigma2, sigma3
 
 class NCC:
@@ -104,7 +116,7 @@ class regularizer_rot_matrix:
     
     
     
-    def loss(self,W):
+    def loss(self,matrix):
     
         """
         Function that combines the two losses applied to the rotation matrix
@@ -133,7 +145,13 @@ class regularizer_rot_matrix:
         #good shape for applying the transformation. Therefore, to apply the loss we
         #need only the rotation part (3x3 matrix)
         #print('W shape', W.shape)
-        W = torch.reshape(W, (3,3))#W[:,:,:-1].reshape(3,3)#
+        
+        # det_loss = []
+        # ortho_loss = []
+        
+        #loop across batch elements
+
+        W = torch.reshape(matrix, (matrix.shape[0],3,3))
         #print('shape A',A.shape)
         #flow_multiplier = 1 
         I = self.identity#[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
@@ -142,6 +160,7 @@ class regularizer_rot_matrix:
           
         det = torch.det(A)
         det_loss = mse_loss(det,torch.ones(det.shape))
+
         #print(det_loss)
 
         # should be close to being orthogonal
@@ -152,16 +171,30 @@ class regularizer_rot_matrix:
         # k1+1/k1+k2+1/k2+k3+1/k3.
         # to prevent NaN, minimize
         # k1+eps + (1+eps)^2/(k1+eps) + ...
-        eps = 1e-5
-        epsI = eps*I#[[[eps * elem for elem in row] for row in Mat] for Mat in I]
-        C = torch.matmul(A, A) + epsI
+        # eps = 1e-5
+        # epsI = eps*I#[[[eps * elem for elem in row] for row in Mat] for Mat in I]
+        # C = torch.matmul(A, A) + epsI
           
-        s1, s2, s3 = elem_sym_polys_of_eigen_values(C)
-        #print(s1, s2, s3)
-        ortho_loss = s1 + (1 + eps) * (1 + eps) * s2 / s3 - 3 * 2 * (1 + eps)
-        ortho_loss = torch.sum(ortho_loss)
-        #print(ortho_loss)
-          
-              #0.1*det_loss + 0.1*ortho_loss
-        #print('Mat loss:', det_loss + ortho_loss)
-        return det_loss + ortho_loss #to_check
+        # s1, s2, s3 = elem_sym_polys_of_eigen_values(C)
+        # #print(s1, s2, s3)
+        # ortho_loss = s1 + (1 + eps) * (1 + eps) * s2 / s3 - 3 * 2 * (1 + eps)
+        # ortho_loss = torch.mean(ortho_loss)
+        
+        
+        # print(det_loss)
+        # print(ortho_loss)
+            
+        #A matrix is orthogonal if A*A = I
+        #this code has been adapted from https://github.com/kevinzakka/pytorch-goodies#orthogonal-regularization 
+        orth_loss = torch.zeros(1)
+        reg = 1e-6
+        param_flat = A.view(A.shape[0], -1)
+        sym = torch.mm(param_flat, torch.t(param_flat))
+        sym -= torch.eye(param_flat.shape[0])
+        orth_loss = orth_loss + (reg * sym.abs().sum())
+    
+
+        tot_loss = torch.stack((det_loss,orth_loss[0]))
+        
+        
+        return torch.sum(tot_loss) #to_check
