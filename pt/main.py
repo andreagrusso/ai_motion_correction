@@ -38,8 +38,8 @@ print('Testing size:',len(testing_files))
 loss_matrix = regularizer_rot_matrix()
 model = AffineNet()
 
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#print("The model will be running on", device, "device")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("The model will be running on", device, "device")
 #device='cpu'
 
 #%% Optimizer
@@ -48,8 +48,8 @@ optimizer = Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
 
 #%%
 
-max_epochs = 3
-params = {'batch_size': 4,
+max_epochs = 2
+params = {'batch_size': 1,
           'shuffle': True}
 
 
@@ -70,7 +70,7 @@ for epoch in range(max_epochs):
         # zero the parameter gradients
         optimizer.zero_grad()
         # predict classes using images from the training set
-        outputs = model(fixed,movable)
+        outputs = model(fixed['data'].to(device),movable['data'].to(device))
         # compute the loss based on model output and real labels
         loss_image = NCC(outputs[0], fixed['data'])#torch.nn.MSELoss()(outputs[0], fixed['data'])##
         loss_rot_params = loss_matrix.loss(outputs[1])
@@ -112,9 +112,20 @@ for i,batch in enumerate(range(params['batch_size'])):
     ax[1,i].imshow(aligned_diff[i,:,:,64], cmap='Greys_r')
     
 
-    
-#ax[0].imshow(np.squeeze(movable_val['data'].detach().numpy())[2,:,:,64]-np.squeeze(fixed_val['data'].detach().numpy())[2,:,:,64], cmap='Greys_r')
-#ax[1].imshow(np.squeeze(outputs[0].detach().numpy())[2,:,:,64]-np.squeeze(fixed_val['data'].detach().numpy())[2,:,:,64], cmap='Greys_r') 
+#%% Testing data
 
-# print(outputs[1])
-# print(outputs[2])   
+input_1 = nb.load(os.path.join(datadir,'sub-03_0-141.nii.gz')).get_fdata()[:,:,:,0]
+input_2 = nb.load(os.path.join(datadir,'sub-03_0-141.nii.gz')).get_fdata()[:,:,:,0]
+input_1 = np.pad(input_1,pad_width=((32,32),(32,32),(44,44)),constant_values=0)
+input_2 = np.pad(input_2,pad_width=((32,32),(32,32),(44,44)),constant_values=0)
+
+input_1 = torch.from_numpy(input_1).float()
+input_2 = torch.from_numpy(input_2).float()
+
+
+
+input_1 = input_1[None, None, :]
+input_2 = input_2[None, None, :]
+
+
+test_outputs = model.predict(input_1, input_2)

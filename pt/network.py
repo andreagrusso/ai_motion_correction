@@ -138,7 +138,7 @@ class AffineNet(nn.Module):
     def forward(self,fixed, movable):
         
         #concatenatation over the last dimension
-        concat_data = torch.cat((fixed['data'],movable['data']),dim=1).to(device)      
+        concat_data = torch.cat((fixed,movable),dim=1).to(device)      
         #first layer
         res_conv_1 = self.conv_1(concat_data)
         #2nd layer
@@ -180,7 +180,7 @@ class AffineNet(nn.Module):
         decoded = self.last_dec_layer(res_deconv_7)
             
         #spatial transorformation
-        padded_output = self.spatial_trans(movable['data'],decoded)
+        padded_output = self.spatial_trans(movable,decoded)
         
         return padded_output, rot_params, trans_params
                  

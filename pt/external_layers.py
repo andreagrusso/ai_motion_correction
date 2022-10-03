@@ -11,7 +11,7 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 import torch
 import torch.nn as nn
 import torch.nn.functional as nnf
-device = 'cpu'#torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class SpatialTransformer(nn.Module):
@@ -27,7 +27,7 @@ class SpatialTransformer(nn.Module):
 
         # create sampling grid
         vectors = [torch.arange(0, s) for s in size]
-        grids = torch.meshgrid(vectors)
+        grids = torch.meshgrid(vectors, indexing='xy')
         grid = torch.stack(grids)
         grid = torch.unsqueeze(grid, 0)
         grid = grid.type(torch.FloatTensor).to(device)
@@ -41,7 +41,7 @@ class SpatialTransformer(nn.Module):
 
     def forward(self, src, flow):
         # new locations
-        new_locs = self.grid + flow
+        new_locs = self.grid + flow.to(device)
         shape = flow.shape[2:]
 
         # need to normalize grid values to [-1, 1] for resampler
