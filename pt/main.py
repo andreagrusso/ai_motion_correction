@@ -34,7 +34,7 @@ print('Testing size:',len(testing_files))
 #%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
-loss_fn = NCC()#nn.MSELoss()
+# loss_fn = NCC()#nn.MSELoss()
 loss_matrix = regularizer_rot_matrix()
 model = AffineNet()
 
@@ -72,7 +72,7 @@ for epoch in range(max_epochs):
         # predict classes using images from the training set
         outputs = model(fixed,movable)
         # compute the loss based on model output and real labels
-        loss_image = loss_fn.loss(outputs[0], fixed['data'])#torch.nn.MSELoss()(outputs[0], fixed['data'])##
+        loss_image = NCC(outputs[0], fixed['data'])#torch.nn.MSELoss()(outputs[0], fixed['data'])##
         loss_rot_params = loss_matrix.loss(outputs[1])
         # backpropagate the loss
         print('Loss image:', loss_image)
