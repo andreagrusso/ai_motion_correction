@@ -13,6 +13,25 @@ import torch.nn.functional as F
 import numpy as np
 
 
+def elem_sym_polys_of_eigen_values(M):
+    
+    sigma1 = torch.trace(M) #sum across diagonal
+    
+    sigma2 = torch.sum(
+        torch.Tensor([M[0,0]*M[1,1], 
+                      M[1,1]*M[2,2], 
+                      M[2,2]*M[0,0]])) - torch.sum(torch.Tensor([M[0,1]*M[1,0], 
+                                                    M[1,2]*M[2,1], 
+                                                    M[2,0]*M[0,2]]))
+                                    
+    sigma3 = torch.sum(torch.Tensor([M[0,0]*M[1,1]*M[2,2],
+                                    M[0,1]*M[1,2]*M[2,0],
+                                    M[0,2]*M[1,0]*M[2,1]])
+                       ) - torch.sum(torch.Tensor([M[0,0]*M[1,2]*M[2,1],
+                                                   M[0,1]*M[1,0]*M[2,2],
+                                                   M[0,2]*M[1,1]*M[2,0]]))
+    return sigma1, sigma2, sigma3
+
 class NCC:
     """
     Local (over window) normalized cross correlation loss.
@@ -73,7 +92,7 @@ class NCC:
 
         cc = cross * cross / (I_var * J_var + 1e-5)
 
-        return -torch.mean(cc)
+        return 1-torch.mean(cc)
 
 
 
@@ -107,7 +126,8 @@ class regularizer_rot_matrix:
         #determinant should be close to 1
           #target that is an image is not used
           #print(A)
-          
+         
+        mse_loss = torch.nn.MSELoss()
         #the affine matrix created in the voxelmorph based neural network is the
         #one of the output of the network and it is a 3x4, thus already in the 
         #good shape for applying the transformation. Therefore, to apply the loss we
@@ -121,8 +141,9 @@ class regularizer_rot_matrix:
         A = W + I
           
         det = torch.det(A)
-        #print(det)
-        det_loss = torch.nn.MSELoss()((det),torch.ones(det.shape))
+        det_loss = mse_loss(det,torch.ones(det.shape))
+        #print(det_loss)
+
         # should be close to being orthogonal
           
         # C=A'A, a positive semi-definite matrix
@@ -135,9 +156,11 @@ class regularizer_rot_matrix:
         epsI = eps*I#[[[eps * elem for elem in row] for row in Mat] for Mat in I]
         C = torch.matmul(A, A) + epsI
           
-        s1, s2, s3 = torch.linalg.eigvals(C)
+        s1, s2, s3 = elem_sym_polys_of_eigen_values(C)
+        #print(s1, s2, s3)
         ortho_loss = s1 + (1 + eps) * (1 + eps) * s2 / s3 - 3 * 2 * (1 + eps)
-        ortho_loss = torch.mean(ortho_loss)
+        ortho_loss = torch.sum(ortho_loss)
+        #print(ortho_loss)
           
               #0.1*det_loss + 0.1*ortho_loss
         #print('Mat loss:', det_loss + ortho_loss)

@@ -14,6 +14,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 #%%
 
+device ='cpu'#= torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 #3d convolution for the first part of the U-Net (using leaky relu)
 class DownConv3D(nn.Module):
@@ -23,7 +25,7 @@ class DownConv3D(nn.Module):
         
         self.conv_3d_block = nn.Sequential(
             nn.Conv3d(in_channels, out_channels, 
-                      kernel, stride, padding=1),
+                      kernel, stride, padding=1, device= device),
             nn.LeakyReLU()
             )
         
@@ -31,6 +33,24 @@ class DownConv3D(nn.Module):
         
         return self.conv_3d_block(tensor_data)
         
+
+class First_UpConv3D(nn.Module):
+    
+    def __init__(self, in_channels, out_channels, kernel, stride):
+        super(First_UpConv3D, self).__init__()
+        
+        self.conv_3d_block = nn.Sequential(
+            nn.ConvTranspose3d(in_channels, out_channels, 
+                      kernel, stride, 
+                      output_padding=1, padding=1,device= device),
+            nn.LeakyReLU()           
+            )
+        
+    def forward(self, tensor_data):
+        
+        return self.conv_3d_block(tensor_data)
+
+
 
 #3d convolution for the second part of the U-Net (using leaky relu)
 class UpConv3D(nn.Module):
@@ -41,8 +61,12 @@ class UpConv3D(nn.Module):
         self.conv_3d_block = nn.Sequential(
             nn.ConvTranspose3d(in_channels, out_channels, 
                       kernel, stride, 
-                      output_padding=1, padding=1),
-            nn.LeakyReLU()
+                      output_padding=1, padding=1,device= device),
+            nn.LeakyReLU(),
+            nn.ConvTranspose3d(out_channels, int(out_channels/2), 
+                       kernel_size=3, stride=1, 
+                       output_padding=0, padding=1,device= device),
+            nn.LeakyReLU()            
             )
         
     def forward(self, tensor_data):
@@ -57,11 +81,11 @@ class linear_layer(nn.Module):
         super(linear_layer, self).__init__()
         
         if activation_fn == 'tanh':
-            self.linear = nn.Sequential(nn.Linear(in_features,out_features),
+            self.linear = nn.Sequential(nn.Linear(in_features,out_features,device= device),
                                           nn.Tanh(),
                                           nn.Dropout3d(drop))
         else:
-            self.linear = nn.Sequential(nn.Linear(in_features,out_features),
+            self.linear = nn.Sequential(nn.Linear(in_features,out_features,device= device),
                                           nn.Dropout3d(drop)) 
     
     def forward(self,x):
@@ -101,7 +125,7 @@ class AffineNet(nn.Module):
 
       
       #deconvolution part
-      self.upoconv_1 = UpConv3D(512,256,3,2)
+      self.upoconv_1 = UpConv3D(512*2, 256*2, 3, 2)#First_UpConv3D(512,256,3,2)
       #2nd upsampling
       self.upoconv_2 = UpConv3D(256*2, 128*2, 3, 2) #skip conn with conv6
       #3rd upsampling
@@ -115,10 +139,10 @@ class AffineNet(nn.Module):
       #7th upsampling
       self.upoconv_7 = UpConv3D(8*2, 2*2, 3, 2) #skip conn with conv1
       #last downsampling
-      self.last_dec_layer = nn.Sequential(nn.ConvTranspose3d(in_channels=2*2, out_channels=1, 
-                            kernel_size=2, stride=2, dilation=1, 
-                            output_padding=0, padding=0),
-                                          nn.LeakyReLU())  
+      self.last_dec_layer = nn.Sequential(nn.ConvTranspose3d(in_channels=2, out_channels=1, 
+                                    kernel_size=1, stride=1, 
+                                    output_padding=0, padding=0),
+                                          nn.LeakyReLU()) 
       
       #TO CHECK 
       self.spatial_trans = SpatialTransformer(size=(128,128,128))  
@@ -127,7 +151,7 @@ class AffineNet(nn.Module):
     def forward(self,fixed, movable):
         
         #concatenatation over the last dimension
-        concat_data = torch.cat((fixed,movable),dim=1)        
+        concat_data = torch.cat((fixed,movable),dim=1).to(device)      
         #first layer
         res_conv_1 = self.conv_1(concat_data)
         #2nd layer
@@ -151,19 +175,19 @@ class AffineNet(nn.Module):
         encoded = torch.transpose(encoded,-1,1)
 
         #decoder
-        res_deconv_1 = self.upoconv_1(encoded)
+        res_deconv_1 = self.upoconv_1(torch.cat((encoded, res_conv_7),dim=1))
         #2nd decoder layer with skip
-        res_deconv_2 = self.upoconv_2(torch.cat((res_conv_6,res_deconv_1),dim=-1))        
+        res_deconv_2 = self.upoconv_2(torch.cat((res_conv_6,res_deconv_1),dim=1))        
         #3rd decoder layer with skip
-        res_deconv_3 = self.upoconv_3(torch.cat((res_conv_5,res_deconv_2),dim=-1))       
+        res_deconv_3 = self.upoconv_3(torch.cat((res_conv_5,res_deconv_2),dim=1))       
         #4th decoder layer with skip
-        res_deconv_4 = self.upoconv_4(torch.cat((res_conv_4,res_deconv_3),dim=-1))        
+        res_deconv_4 = self.upoconv_4(torch.cat((res_conv_4,res_deconv_3),dim=1))        
         #5th decoder layer with skip
-        res_deconv_5 = self.upoconv_5(torch.cat((res_conv_3,res_deconv_4),dim=-1)) 
+        res_deconv_5 = self.upoconv_5(torch.cat((res_conv_3,res_deconv_4),dim=1)) 
         #6th decoder layer with skip
-        res_deconv_6 = self.upoconv_6(torch.cat((res_conv_2,res_deconv_5),dim=-1))
+        res_deconv_6 = self.upoconv_6(torch.cat((res_conv_2,res_deconv_5),dim=1))
         #6th decoder layer with skip
-        res_deconv_7 = self.upoconv_7(torch.cat((res_conv_1,res_deconv_6),dim=-1))
+        res_deconv_7 = self.upoconv_7(torch.cat((res_conv_1,res_deconv_6),dim=1))
 
         #last decoder layer
         decoded = self.last_dec_layer(res_deconv_7)
