@@ -10,23 +10,25 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import numpy as np
-import os
+import os, torch, math
+import torchio as tio
+from losses import Dice
 
 
-def get_padding(orig_input_dims):
-  desidered_input_dims = [128.0, 128.0, 128.0, 128.0, 128.0, 128.0]
-  axis_diff = (np.array(desidered_input_dims)-np.array(2*orig_input_dims))/2
-  pads=[tuple([int(np.ceil(axis_diff[i])),int(np.floor(axis_diff[i+3]))])
-            for i in range(3)]
-  return pads
+# def get_padding(orig_input_dims):
+#   desidered_input_dims = [128.0, 128.0, 128.0, 128.0, 128.0, 128.0]
+#   axis_diff = (np.array(desidered_input_dims)-np.array(2*orig_input_dims))/2
+#   pads=[tuple([int(np.ceil(axis_diff[i])),int(np.floor(axis_diff[i+3]))])
+#             for i in range(3)]
+#   return pads
 
 
-def _3Dpadding(data, pads):
-    """Zeropad the 3D data
-    :param data: 3D numpy array to be padded
-    :return: padded 3D numpy array
-    """
-    return np.pad(data,pad_width=tuple(pads),constant_values=0)
+# def _3Dpadding(data, pads):
+#     """Zeropad the 3D data
+#     :param data: 3D numpy array to be padded
+#     :return: padded 3D numpy array
+#     """
+#     return np.pad(data,pad_width=tuple(pads),constant_values=0)
 
 
 
@@ -127,3 +129,58 @@ def mat_to_mosaic(mosaic_dcm, data_matrix, outdir, idx_dcm, name):
 
     mosaic_dcm.save_as(os.path.join(outdir,name+str(idx_dcm)+'.dcm'))
         
+    
+    
+    
+
+def output_processing(fixed,movable,outputs,orig_dim):
+    
+    dice_fn = Dice()
+    
+    data_tensor = outputs[0]
+    rot_params = outputs[1].cpu().detach().numpy()
+    trans_params = outputs[2].cpu().detach().numpy()
+    
+    orig_dim = [val.detach().numpy()[0] for val in orig_dim]
+    
+    motion_params = np.empty((1,6))
+    
+    
+    #return volume to original dimension
+    tensor = tio.ScalarImage(tensor=torch.squeeze(data_tensor,0))
+    padding = tio.transforms.CropOrPad(tuple(orig_dim))
+    crop_vol = padding(tensor)
+    crop_vol = np.squeeze(crop_vol['data'].cpu().detach().numpy())
+    
+    
+    #motion parameters
+    motion_params[0,:3] = trans_params.reshape(1,-1)
+    
+    #rotation params (hopefully in radians)
+    #source Rigid Body Registration John Ashburner & Karl J. Friston
+    rot_mat = rot_params.reshape(3,3)+np.eye(3)
+    q5 = np.arcsin(rot_mat[0,2]) #q5
+    motion_params[0,4] = np.rad2deg(q5)
+    
+    q4 = math.atan2(rot_mat[1,2]/math.cos(q5),
+                    rot_mat[2,2]/math.cos(q5)) #q4
+    motion_params[0,3] = np.rad2deg(q4)
+    
+    q6 = math.atan2(rot_mat[0,1]/math.cos(q5),
+                    rot_mat[0,0]/math.cos(q5)) #q6
+    motion_params[0,5] = np.rad2deg(q6)
+    
+    
+    #estimate the dice coefficient with the target
+    dice_post = dice_fn.loss(fixed,data_tensor)
+    dice_post = dice_post.cpu().detach().numpy()
+    
+    #dice index with the original data
+    dice_pre = dice_fn.loss(fixed,movable)
+    dice_pre = dice_pre.cpu().detach().numpy()
+
+    return crop_vol, motion_params, dice_post, dice_pre
+
+    
+    
+    

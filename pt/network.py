@@ -107,6 +107,9 @@ class AffineNet(nn.Module):
       #dense layer for the rotation params
       self.trans_params = linear_layer(512, 3, 'linear', 0.3)
       
+      #first linear
+      self.first_linear = linear_layer(512, 12, 'linear', 0.3)
+      
       #from 12 to 512 again
       self.linear_before_dec = nn.Linear(12,512)
 
@@ -157,6 +160,8 @@ class AffineNet(nn.Module):
         rot_params = self.rot_params(torch.transpose(res_conv_7,1,-1))
         trans_params = self.trans_params(torch.transpose(res_conv_7,1,-1))
         affine_params = torch.cat((trans_params,rot_params),dim=-1)
+        
+        affine_params = self.first_linear(torch.transpose(res_conv_7,1,-1))
         
         encoded = self.linear_before_dec(affine_params)
         encoded = torch.transpose(encoded,-1,1)

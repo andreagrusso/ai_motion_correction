@@ -51,6 +51,8 @@ class Training_dataset(torch.utils.data.Dataset):
         pair = self.pairs[ID]
         trg_mat = mosaic_to_mat(pydicom.dcmread(pair[1]))
         mov_mat = mosaic_to_mat(pydicom.dcmread(pair[0]))
+        orig_dim = mov_mat.shape
+
         
         trg_mat = np.expand_dims(trg_mat, axis=0)
         mov_mat = np.expand_dims(mov_mat, axis=0)
@@ -64,10 +66,16 @@ class Training_dataset(torch.utils.data.Dataset):
         scaled_mov = scaler(mov_tensor)
         scaled_trg = scaler(trg_tensor)
         
+        #masking
+        #the threshld is the median. It looks high but it works
+        mask = tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.5))
+        m_scaled_mov = mask(scaled_mov)
+        m_scaled_trg = mask(scaled_trg)
+        
         #padding
         padding = tio.transforms.CropOrPad((128,128,128))
-        zeropad_mov = padding(scaled_mov)
-        zeropad_trg = padding(scaled_trg)
+        zeropad_mov = padding(m_scaled_mov)
+        zeropad_trg = padding(m_scaled_trg)
         
         if np.sum(mov_mat-trg_mat)!=0:
         
@@ -85,10 +93,10 @@ class Training_dataset(torch.utils.data.Dataset):
             
                    
     
-            return zeropad_trg, aug_zeropad_mov
+            return zeropad_trg, aug_zeropad_mov, orig_dim
         
         else:
-            return zeropad_trg, zeropad_mov
+            return zeropad_trg, zeropad_mov, orig_dim
         
 
 class Validation_dataset(torch.utils.data.Dataset):
@@ -123,6 +131,8 @@ class Validation_dataset(torch.utils.data.Dataset):
         pair = self.pairs[ID]
         trg_mat = mosaic_to_mat(pydicom.dcmread(pair[1]))
         mov_mat = mosaic_to_mat(pydicom.dcmread(pair[0]))
+        orig_dim = mov_mat.shape
+
         
         trg_mat = np.expand_dims(trg_mat, axis=0)
         mov_mat = np.expand_dims(mov_mat, axis=0)
@@ -136,15 +146,21 @@ class Validation_dataset(torch.utils.data.Dataset):
         scaled_mov = scaler(mov_tensor)
         scaled_trg = scaler(trg_tensor)
         
+        #masking
+        #the threshld is the median. It looks high but it works
+        mask = tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.5))
+        m_scaled_mov = mask(scaled_mov)
+        m_scaled_trg = mask(scaled_trg)
+        
         #padding
         padding = tio.transforms.CropOrPad((128,128,128))
-        zeropad_mov = padding(scaled_mov)
-        zeropad_trg = padding(scaled_trg)
+        zeropad_mov = padding(m_scaled_mov)
+        zeropad_trg = padding(m_scaled_trg)
         
         
                
 
-        return zeropad_trg,zeropad_mov
+        return zeropad_trg,zeropad_mov, orig_dim
 
   
 # # import matplotlib.pyplot as plt   

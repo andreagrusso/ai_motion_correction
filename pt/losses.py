@@ -52,14 +52,22 @@ class Dice:
     """
     N-D dice for segmentation
     """
+    
 
     def loss(self, y_true, y_pred):
+        
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        
+        y_true = y_true.to(device)
+        y_pred = y_pred.to(device)
+        
         ndims = len(list(y_pred.size())) - 2
         vol_axes = list(range(2, ndims + 2))
         top = 2 * (y_true * y_pred).sum(dim=vol_axes)
         bottom = torch.clamp((y_true + y_pred).sum(dim=vol_axes), min=1e-5)
         dice = torch.mean(top / bottom)
-        return -dice
+        return 1-dice
+    
 
 #adapted from https://github.com/yuta-hi/pytorch_similarity/blob/master/torch_similarity/modules/normalized_cross_correlation.py
 def NCC(x, y, reduction='mean', eps=1e-8):
@@ -201,7 +209,7 @@ class regularizer_rot_matrix:
         #A matrix is orthogonal if A*A = I
         #this code has been adapted from https://github.com/kevinzakka/pytorch-goodies#orthogonal-regularization 
         orth_loss = torch.zeros(1)
-        reg = 1e-6
+        reg = 1e-5
         param_flat = A.view(A.shape[0], -1)
         sym = torch.mm(param_flat, torch.t(param_flat))
         sym -= torch.eye(param_flat.shape[0])
