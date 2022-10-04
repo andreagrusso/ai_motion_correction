@@ -40,7 +40,7 @@ model = AffineNet()
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("The model will be running on", device, "device")
-#device='cpu'
+model.to(device)
 
 #%% Optimizer
 

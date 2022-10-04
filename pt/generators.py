@@ -30,6 +30,8 @@ class Training_dataset(torch.utils.data.Dataset):
         self.pairs = pairs_list #each pair contains movable and corresponding target
         self.list_IDs = range(len(pairs_list)) #indices of the list
         self.dims = dims #list of the desidered dims for zero padding
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
         
         
 

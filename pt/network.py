@@ -141,7 +141,7 @@ class AffineNet(nn.Module):
     def forward(self,fixed, movable):
         
         #concatenatation over the last dimension
-        concat_data = torch.cat((fixed,movable),dim=1).to(device)      
+        concat_data = torch.cat((fixed,movable),dim=1)#.to(device)      
         #first layer
         res_conv_1 = self.conv_1(concat_data)
         #2nd layer

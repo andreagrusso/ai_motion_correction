@@ -160,7 +160,8 @@ class regularizer_rot_matrix:
         #determinant should be close to 1
           #target that is an image is not used
           #print(A)
-         
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
         mse_loss = torch.nn.MSELoss()
         #the affine matrix created in the voxelmorph based neural network is the
         #one of the output of the network and it is a 3x4, thus already in the 
@@ -176,12 +177,12 @@ class regularizer_rot_matrix:
         W = torch.reshape(matrix, (matrix.shape[0],3,3))
         #print('shape A',A.shape)
         #flow_multiplier = 1 
-        I = self.identity#[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
+        I = self.identity.to(device)#[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
         #W = tf.reshape(W, [-1, 3, 3]) * flow_multiplier
         A = W + I
           
         det = torch.det(A)
-        det_loss = mse_loss(det,torch.ones(det.shape))
+        det_loss = mse_loss(det,torch.ones(det.shape).to(device))
 
         #print(det_loss)
 
@@ -208,11 +209,11 @@ class regularizer_rot_matrix:
             
         #A matrix is orthogonal if A*A = I
         #this code has been adapted from https://github.com/kevinzakka/pytorch-goodies#orthogonal-regularization 
-        orth_loss = torch.zeros(1)
+        orth_loss = torch.zeros(1).to(device)
         reg = 1e-5
         param_flat = A.view(A.shape[0], -1)
-        sym = torch.mm(param_flat, torch.t(param_flat))
-        sym -= torch.eye(param_flat.shape[0])
+        sym = torch.mm(param_flat, torch.t(param_flat).to(device))
+        sym -= torch.eye(param_flat.shape[0]).to(device)
         orth_loss = orth_loss + (reg * sym.abs().sum())
     
 
