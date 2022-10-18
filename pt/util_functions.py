@@ -43,7 +43,7 @@ def mosaic_to_mat(dcm_file):
     if os.path.isfile(nii['NII_FILE']):
         os.remove(nii['NII_FILE'])
     
-    return mat, nii['NII_FILE']
+    return mat
     
     
 

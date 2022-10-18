@@ -24,8 +24,8 @@ from online_create_pairs import create_pairs
 # from dicom2nifti.convert_dicom import dicom_array_to_nifti
 # import pydicom
 #%% Data import
-datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'
-outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results'
+datadir = '/home/ubuntu22/Desktop/ai_mc/'
+outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
 #%% Import model
 
@@ -48,8 +48,8 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 2,
 
 #%% Set some variables
 
-max_epochs = 10
-batch = 1
+max_epochs = 20
+batch = 4
 
 training_image_loss = dict()
 training_matrix_loss = dict()
