@@ -49,7 +49,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 2,
 #%% Set some variables
 
 max_epochs = 20
-batch = 4
+batch = 8
 
 training_image_loss = dict()
 training_matrix_loss = dict()
@@ -61,17 +61,20 @@ validation_matrix_loss = dict()
 min_valid_loss = np.inf
 
 
+training_loss = []
+validation_loss = []
+
+train_iter = 0
+val_iter = 0
 
 #%% Loop for training
 
 for epoch in range(max_epochs):
     
-    nii2remove = []
     #create training pairs on the fly
     training_files, validation_files = create_pairs(os.path.join(datadir,'dcm'))
     print('New set of pairs!')
-    print(len(training_files))
-    print(len(validation_files))
+
     
     training_set = Create_dataset(training_files, 
                                                  (128,128,128))    
@@ -84,25 +87,16 @@ for epoch in range(max_epochs):
                                                        batch_size = batch, 
                                                        shuffle=True)
     
+
     
-    #create list in dict to save losses
-    epoch_key = 'Epoch'+str(epoch)
-    training_image_loss[epoch_key]=[]
-    training_matrix_loss[epoch_key]=[]
-    validation_image_loss[epoch_key]=[]
-    validation_matrix_loss[epoch_key]=[]
-    
-    
-    #dicom_array_to_nifti(pydicom.dcmread(training_files[0][1]),'test.dcm',reorient_nifti=True)
     ####################TRAINING####################################
     start = time.time()
-    # if epoch == 0:
+
         
-    #training    
+    #training 
+    running_loss = 0.0
     for fixed, movable, orig_dim in training_generator:
         
-        #nii2remove += nii1
-        #nii2remove += nii2
         
         # zero the parameter gradients
         optimizer.zero_grad()
@@ -121,17 +115,20 @@ for epoch in range(max_epochs):
         optimizer.step()
         
         #storing losses
-        training_image_loss[epoch_key].append(loss_image.cpu().detach().numpy())
-        training_matrix_loss[epoch_key].append(loss_rot_params.cpu().detach().numpy())
+        training_loss += [loss.item(), train_iter, epoch]
+        train_iter +=1
+        running_loss += loss.item()
+
   
     print('###########################################################')
     print('################## TRAINING SCORES ########################')
-    print('Mean Loss Image',epoch_key,':',np.average(training_image_loss[epoch_key]))
-    print('Mean Loss Matrix',epoch_key,':',np.average(training_matrix_loss[epoch_key]))
+    print('Epoch ', epoch, ' ', 'average loss: ', running_loss/len(training_files))
+
         
 
 
     ###############VALIDATION#############################
+    running_loss = 0.0
     for fixed_val, movable_val, orig_dim in validation_generator:  
         
         #nii2remove += nii1
@@ -148,23 +145,24 @@ for epoch in range(max_epochs):
         val_loss = val_loss_image  + val_loss_rot_params
   
         #storing losses
-        validation_image_loss[epoch_key].append(val_loss_image.cpu().detach().numpy())
-        validation_matrix_loss[epoch_key].append(val_loss_rot_params.cpu().detach().numpy())
+        validation_loss += [val_loss.item(), val_iter, epoch]
+        val_iter +=1
+        running_loss += val_loss.item()
+
         
 
     print('###########################################################')
-    print('################## VALIDATION SCORES ######################')
-    print('Mean Loss Image',epoch_key,':',np.average(validation_image_loss[epoch_key]))
-    print('Mean Loss Matrix',epoch_key,':',np.average(validation_matrix_loss[epoch_key]))
+    print('################## TRAINING SCORES ########################')
+    print('Epoch ', epoch, ' ', 'average loss: ', running_loss/len(validation_files))
+    mean_valid_loss = running_loss/len(validation_files)
     
-    mean_valid_loss = np.average(validation_image_loss[epoch_key])
 
     if min_valid_loss > mean_valid_loss:
         print(f'Validation Loss Decreased({min_valid_loss:.6f}--->{mean_valid_loss:.6f}) \t Saving The Model')
         min_valid_loss = mean_valid_loss
         # Saving State Dict
         torch.save(model.state_dict(), 
-                   os.path.join(outdir,'saved_model.pth'))
+                   os.path.join(outdir,'affine_saved_model.pth'))
         print('Model saved!')
             
     
@@ -256,11 +254,16 @@ plt.title('Orig motion')
 
 #%% Save performance of the both training and validation
 
+training_df = pd.DataFrame(data = training_loss, columns=['Loss', 'Iter', 'Epoch'])
+validation_df = pd.DataFrame(data = validation_loss, columns=['Loss', 'Iter', 'Epoch'])
+motion_df = pd.DataFrame(data=motion_params, columns=['X trans','Y trans','Z trans',
+            'X rot','Y rot','Z rot'])
+pre_mse_df = pd.DataFrame(data=all_dice_pre, columns=['Pre MSE'])
+post_mse_df = pd.DataFrame(data=all_dice_post, columns=['Pre MSE'])
 
-training_image_loss_df = pd.DataFrame.from_dict(training_image_loss).astype('float32')
-training_matrix_loss_df = pd.DataFrame.from_dict(training_matrix_loss).astype('float32')
 
-validation_image_loss_df = pd.DataFrame.from_dict(validation_image_loss).astype('float32')
-validation_matrix_loss_df = pd.DataFrame.from_dict(validation_matrix_loss).astype('float32')
-
+training_df.to_csv(os.path.join(outdir,'AffineNet_training_loss.csv'))
+validation_df.to_csv(os.path.join(outdir,'AffineNet_validation_loss.csv'))
+post_mse_df.to_csv(os.path.join(outdir,'AffineNet_post_MSE.csv'))
+pre_mse_df.to_csv(os.path.join(outdir,'AffineNet_pre_MSE.csv'))
 
