@@ -14,7 +14,7 @@ import numpy as np
 
 
 #%%
-datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/dcm'
+datadir = '/home/ubuntu22/Desktop/ai_mc/dcm'
 colabdir = '/content/drive/MyDrive/ColabNotebooks/ai_motion/data/dcm'    
 
 #%%  Training files

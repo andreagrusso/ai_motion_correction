@@ -32,7 +32,7 @@ outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
 # loss_fn = NCC()#nn.MSELoss()
 loss_matrix = regularizer_rot_matrix()
-model = AffineNet()#ReSTN()#Unet_Stn() 
+model = AffineNet()#ReSTN()# Unet_Stn()#
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("The model will be running on", device, "device")
@@ -41,7 +41,7 @@ model.to(device)
 #%% Optimizer
 
 optimizer = Adam(model.parameters(), lr=0.0001)
-lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 2, 
+lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 4, 
                                               gamma=0.5, 
                                               last_epoch=- 1, 
                                               verbose=False)
@@ -49,7 +49,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 2,
 #%% Set some variables
 
 max_epochs = 20
-batch = 8
+batch = 1
 
 training_image_loss = dict()
 training_matrix_loss = dict()
@@ -73,6 +73,9 @@ for epoch in range(max_epochs):
     
     #create training pairs on the fly
     training_files, validation_files = create_pairs(os.path.join(datadir,'dcm'))
+    print('Training size', len(training_files))
+    print('validation size', len(validation_files))
+
     print('New set of pairs!')
 
     
@@ -152,7 +155,7 @@ for epoch in range(max_epochs):
         
 
     print('###########################################################')
-    print('################## TRAINING SCORES ########################')
+    print('################## VALIDATION SCORES ######################')
     print('Epoch ', epoch, ' ', 'average loss: ', running_loss/len(validation_files))
     mean_valid_loss = running_loss/len(validation_files)
     
@@ -162,7 +165,7 @@ for epoch in range(max_epochs):
         min_valid_loss = mean_valid_loss
         # Saving State Dict
         torch.save(model.state_dict(), 
-                   os.path.join(outdir,'affine_saved_model.pth'))
+                   os.path.join(outdir,'affinesaved_model.pth'))
         print('Model saved!')
             
     
@@ -175,32 +178,32 @@ for epoch in range(max_epochs):
         
 #%% Some visualization
 
-orig_diff = np.squeeze((movable_val['data']-fixed_val['data']).detach().numpy())
-aligned_diff = np.squeeze((outputs[0].cpu()-fixed_val['data']).detach().numpy())
+# orig_diff = np.squeeze((movable_val['data']-fixed_val['data']).detach().numpy())
+# aligned_diff = np.squeeze((outputs[0].cpu()-fixed_val['data']).detach().numpy())
 
 
-if batch>1:
-    f, ax = plt.subplots(2,batch)
+# if batch>1:
+#     f, ax = plt.subplots(2,batch)
     
-    for i,b in enumerate(range(batch)):
+#     for i,b in enumerate(range(batch)):
             
-        ax[0,i].imshow(orig_diff[i,:,:,64], cmap='Greys_r')
-        ax[1,i].imshow(aligned_diff[i,:,:,64], cmap='Greys_r')
-else:
+#         ax[0,i].imshow(orig_diff[i,:,:,64], cmap='Greys_r')
+#         ax[1,i].imshow(aligned_diff[i,:,:,64], cmap='Greys_r')
+# else:
     
-    f, ax = plt.subplots(2,1)
-    ax[0].imshow(orig_diff[:,:,64], cmap='Greys_r')
-    ax[1].imshow(aligned_diff[:,:,64], cmap='Greys_r')
+#     f, ax = plt.subplots(2,1)
+#     ax[0].imshow(orig_diff[:,:,64], cmap='Greys_r')
+#     ax[1].imshow(aligned_diff[:,:,64], cmap='Greys_r')
 
 #%% Testing data
 
 ### LOAD BEST MODEL######
 model2 = AffineNet()
-model2.load_state_dict(torch.load(os.path.join(outdir,'saved_model.pth')))
+model2.load_state_dict(torch.load(os.path.join(outdir,'affine_saved_model.pth')))
 model2.eval()
 model2 = model2.to(device)
 
-testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_sub00_run1_testing_set.pkl'),'rb'))
+testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_sub_from_training_run7_testing_set.pkl'),'rb'))
 testing_set = Create_dataset(testing_files, (128,128,128))
 testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
 
@@ -227,32 +230,34 @@ for fixed_test, movable_test, orig_dim in testing_generator: #just testing
     i +=1
     
     
-f, ax = plt.subplots(1,1)
+# f, ax = plt.subplots(1,1)
 
-ax.plot(all_dice_post)
-ax.plot(all_dice_pre)
-plt.legend(['post','pre']) 
+# ax.plot(all_dice_post)
+# ax.plot(all_dice_pre)
+# plt.legend(['post','pre']) 
 
-f, ax = plt.subplots(1,1)
+# f, ax = plt.subplots(1,1)
 
-ax.plot(motion_params)
-plt.legend(['X trans','Y trans','Z trans',
-            'X rot','Y rot','Z rot'])  
-plt.title('AI motion')    
+# ax.plot(motion_params)
+# plt.legend(['X trans','Y trans','Z trans',
+#             'X rot','Y rot','Z rot'])  
+# plt.title('AI motion')    
 
-#load spm aligned parameters
-spm_params_dir = os.path.join(datadir,'dcm','test','sub10','run7')
-file = glob.glob(os.path.join(spm_params_dir,'rp*.txt'))[0]
-spm_motion = np.loadtxt(os.path.join(file))
+# #load spm aligned parameters
+# spm_params_dir = os.path.join(datadir,'dcm','test','sub10','run7')
+# file = glob.glob(os.path.join(spm_params_dir,'rp*.txt'))[0]
+# spm_motion = np.loadtxt(os.path.join(file))
 
-f, ax = plt.subplots(1,1)
+# f, ax = plt.subplots(1,1)
 
-ax.plot(spm_motion)
-plt.legend(['X trans','Y trans','Z trans',
-            'X rot','Y rot','Z rot'])  
-plt.title('Orig motion')
+# ax.plot(spm_motion)
+# plt.legend(['X trans','Y trans','Z trans',
+#             'X rot','Y rot','Z rot'])  
+# plt.title('Orig motion')
 
 #%% Save performance of the both training and validation
+training_loss = np.array(training_loss).reshape((int(len(training_loss)/3),3))
+validation_loss = np.array(validation_loss).reshape((int(len(validation_loss)/3),3))
 
 training_df = pd.DataFrame(data = training_loss, columns=['Loss', 'Iter', 'Epoch'])
 validation_df = pd.DataFrame(data = validation_loss, columns=['Loss', 'Iter', 'Epoch'])
