@@ -13,41 +13,6 @@ import torch.nn.functional as F
 import numpy as np
 
 
-
-
-# def elem_sym_polys_of_eigen_values(M):
-    
-#     #to calculate quickly the trace on batch. Sum across diagonal
-#     sigma1 = torch.einsum('bii->b', M) 
-    
-    
-#     sigma_2_a = torch.sum(torch.stack((M[:,0,0]*M[:,1,1],
-#                                       M[:,1,1]*M[:,2,2],
-#                                       M[:,2,2]*M[:,0,0])), dim=0)
-    
-#     sigma_2_b = torch.sum(torch.stack((M[:,0,1]*M[:,1,0], 
-#                                         M[:,1,2]*M[:,2,1], 
-#                                         M[:,2,0]*M[:,0,2])),dim=0)
-    
-#     sigma2 = torch.sum(torch.stack((sigma_2_a,-1*sigma_2_b)), dim=0) 
-    
-
-
-
-#     sigma_3_a = torch.sum(torch.stack((M[:,0,0]*M[:,1,1]*M[:,2,2],
-#                                     M[:,0,1]*M[:,1,2]*M[:,2,0],
-#                                     M[:,0,2]*M[:,1,0]*M[:,2,1])), dim = 0)
-
-#     sigma_3_b = torch.sum(torch.stack((M[:,0,0]*M[:,1,2]*M[:,2,1],
-#                                 M[:,0,1]*M[:,1,0]*M[:,2,2],
-#                                 M[:,0,2]*M[:,1,1]*M[:,2,0])), dim = 0) 
-                               
-#     sigma3 = torch.sum(torch.stack((sigma_3_a,-1*sigma_3_b)), dim=0)
-    
-#     return sigma1, sigma2, sigma3
-
-
-
 class Dice:
     """
     N-D dice for segmentation
@@ -66,7 +31,7 @@ class Dice:
         top = 2 * (y_true * y_pred).sum(dim=vol_axes)
         bottom = torch.clamp((y_true + y_pred).sum(dim=vol_axes), min=1e-5)
         dice = torch.mean(top / bottom)
-        return 1-dice
+        return dice
     
 
 #adapted from https://github.com/yuta-hi/pytorch_similarity/blob/master/torch_similarity/modules/normalized_cross_correlation.py
@@ -92,8 +57,8 @@ def NCC(x, y, reduction='mean', eps=1e-8):
     b = shape[0]
 
     # reshape
-    x = x.view(b, -1)
-    y = y.view(b, -1)
+    x = x.reshape(b, -1) #x.view(b,-1)
+    y = y.reshape(b, -1) #y.view(b,-1)
 
     # mean
     x_mean = torch.mean(x, dim=1, keepdim=True)
@@ -125,7 +90,7 @@ def NCC(x, y, reduction='mean', eps=1e-8):
     # if not return_map:
     #     return ncc
 
-    return 1.0-ncc#, ncc_map
+    return 1-ncc#, ncc_map
 
 
 
@@ -174,12 +139,14 @@ class regularizer_rot_matrix:
         
         #loop across batch elements
 
-        W = torch.reshape(matrix, (matrix.shape[0],3,3))
-        #print('shape A',A.shape)
-        #flow_multiplier = 1 
-        I = self.identity.to(device)#[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
-        #W = tf.reshape(W, [-1, 3, 3]) * flow_multiplier
-        A = W + I
+        # if matrix.size!=3:
+        #     matrix = torch.unsqueeze(matrix, 0)
+        W = matrix[:,:,:-1].view(-1,3,3)#(matrix, (matrix.shape[0],3,3))
+        A = W
+
+        # W = torch.reshape(matrix, (matrix.shape[0],3,3))
+        # I = self.identity.to(device)#[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]
+        # A = W + I
           
         det = torch.det(A)
         det_loss = mse_loss(det,torch.ones(det.shape).to(device))
@@ -211,7 +178,7 @@ class regularizer_rot_matrix:
         #this code has been adapted from https://github.com/kevinzakka/pytorch-goodies#orthogonal-regularization 
         orth_loss = torch.zeros(1).to(device)
         reg = 1e-5
-        param_flat = A.view(A.shape[0], -1)
+        param_flat = A.reshape(A.shape[0], -1)
         sym = torch.mm(param_flat, torch.t(param_flat).to(device))
         sym -= torch.eye(param_flat.shape[0]).to(device)
         orth_loss = orth_loss + (reg * sym.abs().sum())

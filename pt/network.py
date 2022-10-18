@@ -8,188 +8,548 @@ This is a temporary script file.
 
 import torch
 import torch.nn as nn
-from external_layers import SpatialTransformer
+import torch.nn.functional as F
+import numpy as np
+import matplotlib.pyplot as plt
+from torchinfo import summary
+
 #from torch.utils.tensorboard import SummaryWriter
 
 #%%
 
-device ='cpu'#= torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-#3d convolution for the first part of the U-Net (using leaky relu)
-class DownConv3D(nn.Module):
-    
-    def __init__(self, in_channels, out_channels, kernel, stride):
-        super(DownConv3D, self).__init__()
-        
-        self.conv_3d_block = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, 
-                      kernel, stride, padding=1, device= device),
-            nn.LeakyReLU()
-            )
-        
-    def forward(self, tensor_data):
-        
-        return self.conv_3d_block(tensor_data)
-        
-
-#3d convolution for the second part of the U-Net (using leaky relu)
-class UpConv3D(nn.Module):
-    
-    def __init__(self, in_channels, out_channels, kernel, stride):
-        super(UpConv3D, self).__init__()
-        
-        self.conv_3d_block = nn.Sequential(
-            nn.ConvTranspose3d(in_channels, out_channels, 
-                      kernel, stride, 
-                      output_padding=1, padding=1,device= device),
-            nn.LeakyReLU(),
-            nn.ConvTranspose3d(out_channels, int(out_channels/2), 
-                       kernel_size=3, stride=1, 
-                       output_padding=0, padding=1,device= device),
-            nn.LeakyReLU()            
-            )
-        
-    def forward(self, tensor_data):
-        
-        return self.conv_3d_block(tensor_data)
-
-
-
-class linear_layer(nn.Module):
-    
-    def __init__(self, in_features, out_features, activation_fn, drop):
-        super(linear_layer, self).__init__()
-        
-        if activation_fn == 'tanh':
-            self.linear = nn.Sequential(nn.Linear(in_features,out_features,device= device),
-                                          nn.Tanh(),
-                                          nn.Dropout3d(drop))
-        else:
-            self.linear = nn.Sequential(nn.Linear(in_features,out_features,device= device),
-                                          nn.Dropout3d(drop)) 
-    
-    def forward(self,x):
-        
-        return self.linear(x)
-    
-
-
-
-
-
-    
-        
 class AffineNet(nn.Module):
     
     #this function will define the skeleton of the network
     def __init__(self):
       super(AffineNet, self).__init__()
       
-      #1st conv
-      self.conv_1 = DownConv3D(2,8,3,2)
-      #2nd conv
-      self.conv_2 = DownConv3D(8,16,3,2)
-      #3rd conv
-      self.conv_3 = DownConv3D(16,32,3,2)
-      #4th conv
-      self.conv_4 = DownConv3D(32,64,3,2)
-      #5th conv
-      self.conv_5 = DownConv3D(64,128,3,2)
-      #6th conv
-      self.conv_6 = DownConv3D(128,256,3,2)
-      #7th conv
-      self.conv_7 = DownConv3D(256,512,3,2)
+      self.theta = torch.tensor([1, 0, 0, 0, 
+                                0, 1, 0, 0,
+                                0, 0, 1, 0], dtype=torch.float)
       
-      #dense layer for the rotation params
-      self.rot_params = linear_layer(512, 9, 'tanh', 0.3)
+      self.localization = nn.Sequential(
+              nn.Conv3d(2, 4, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(4, 8, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(8, 16, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(16, 32, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True))
       
-      #dense layer for the rotation params
-      self.trans_params = linear_layer(512, 3, 'linear', 0.3)
-      
-      #first linear
-      self.first_linear = linear_layer(512, 12, 'linear', 0.3)
-      
-      #from 12 to 512 again
-      self.linear_before_dec = nn.Linear(12,512)
 
-      
-      #deconvolution part
-      self.upoconv_1 = UpConv3D(512*2, 256*2, 3, 2)#First_UpConv3D(512,256,3,2)
-      #2nd upsampling
-      self.upoconv_2 = UpConv3D(256*2, 128*2, 3, 2) #skip conn with conv6
-      #3rd upsampling
-      self.upoconv_3 = UpConv3D(128*2, 64*2, 3, 2) #skip conn with conv5
-      #4th upsampling
-      self.upoconv_4 = UpConv3D(64*2, 32*2, 3, 2) #skip conn with conv4
-      #5h upsampling
-      self.upoconv_5 = UpConv3D(32*2, 16*2, 3, 2) #skip conn with conv3
-      #6th upsampling
-      self.upoconv_6 = UpConv3D(16*2, 8*2, 3, 2) #skip conn with conv2
-      #7th upsampling
-      self.upoconv_7 = UpConv3D(8*2, 2*2, 3, 2) #skip conn with conv1
-      #last downsampling
-      self.last_dec_layer = nn.Sequential(nn.ConvTranspose3d(in_channels=2, out_channels=1, 
-                                    kernel_size=1, stride=1, 
-                                    output_padding=0, padding=0),
-                                          nn.LeakyReLU()) 
-      
-      #TO CHECK 
-      self.spatial_trans = SpatialTransformer(size=(128,128,128))  
- 
+        #regression on 12 parameters
+      self.regression = nn.Sequential(nn.Linear(512*1*1*1,12))
         
-    def forward(self,fixed, movable):
+          # Initialize the weights/bias with identity transformation
+      #self.regression[0].weight.data.zero_()
+      self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
+                                                           0, 1, 0, 0,
+                                                           0, 0, 1, 0], dtype=torch.float))
+        
+        
+        #### regression separetely on rotation and translation
+        #dense layer for the rotation params
+      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9),nn.Tanh())# tanh activation?
+      #self.rot_params[0].weight.data.zero_()
+      self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
+                                                         0, 1, 0,
+                                                         0, 0, 1], dtype=torch.float))
+        
+        #dense layer for the translation params
+      self.trans_params = nn.Linear(512*1*1*1, 3)           
+      #self.trans_params.weight.data.zero_()
+      self.trans_params.bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
+
+
+
+    
+    #transformation network
+    def stn(self, x):
+        
+        #learn the features
+        xs = self.localization(x)
+        xs = xs.view(xs.shape[0],-1)
+        
+        #rotation and translation parameters
+        rot_params = self.rot_params(xs).view(-1,3,3)
+        trans_params = self.trans_params(xs).view(-1,3,1)
+        #concat translation and rotation
+        theta = torch.cat((rot_params,trans_params),dim=-1)
+
+
+        
+        
+        if x.shape[0] > 1: #batch_size higher than 1
+        
+            #exapnd on channel dim to keep batch size
+            movable = torch.unsqueeze(x[:,1,:,:,:],1) 
+            
+            grid = torch.empty((x.shape[0],
+                                x.shape[2],
+                                x.shape[3],
+                                x.shape[4],
+                                3)).to(device) #affine gird creates 3 channels (3 axis)
+        
+            for i in range(x.shape[0]):
+                
+                single_theta = torch.unsqueeze(theta[i,:,:],0)#select one item at time
+                movable_size = (1, 1, x.shape[2], x.shape[3], x.shape[4])
+                
+                #get the single interpolation grid
+                grid[i,:,:,:,:] = F.affine_grid(single_theta, 
+                                                movable_size,
+                                                align_corners=False)
+                
+        else:         
+        
+            #exapnd on batch dim to keep correct shape
+            movable = torch.unsqueeze(x[:,1,:,:,:],0)
+            
+            #find the interpolation grid
+            grid = F.affine_grid(theta, 
+                                 movable.shape,
+                                 align_corners=False)
+            
+            
+            
+        #apply the grid
+        x = F.grid_sample(movable, grid,
+                          align_corners=False,
+                          mode = 'bilinear')
+    
+        return x, theta
+        
+    def forward(self, fixed, movable):
+        
+        #concatenatation over the last dimension
+        concat_data = torch.cat((fixed,movable),dim=1)#.to(device)
+        #apply transformation network
+        padded_output, theta = self.stn(concat_data)
+        
+        return padded_output, theta
+
+
+#%% UNet + STN
+
+class Block(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.conv1 = nn.Conv3d(in_ch, out_ch, 3, padding=1)
+        self.LeakyReLU  = nn.LeakyReLU()
+        self.conv2 = nn.Conv3d(out_ch, out_ch, 3, padding=1)
+    
+    def forward(self, x):
+        return self.LeakyReLU(self.conv2(self.LeakyReLU(self.conv1(x))))
+    
+    
+class Encoder(nn.Module):
+    def __init__(self, chs=(2,8, 16, 32, 64,128,256,512)):
+        super().__init__()
+        self.enc_blocks = nn.ModuleList([Block(chs[i], chs[i+1]) for i in range(len(chs)-1)])
+        self.pool       = nn.MaxPool3d(2)
+    
+    def forward(self, x):
+        ftrs = []
+        for block in self.enc_blocks:
+            x = block(x)
+            ftrs.append(x)
+            #print('Enc ouptut:',x.shape)
+            x = self.pool(x)
+        return ftrs
+    
+    
+class Decoder(nn.Module):
+    def __init__(self, chs=(512, 256, 128, 64, 32, 16, 8)):
+        super().__init__()
+        self.chs         = chs
+        self.upconvs    = nn.ModuleList([nn.ConvTranspose3d(chs[i], chs[i+1], 3,2, output_padding=1, padding=1) for i in range(len(chs)-1)])
+        self.dec_blocks = nn.ModuleList([Block(chs[i], chs[i+1]) for i in range(len(chs)-1)]) 
+        
+    def forward(self, x, encoder_features):
+        for i in range(len(self.chs)-1):
+            x        = self.upconvs[i](x)
+            #print('Upsampling shape',x.shape)
+            #enc_ftrs = self.crop(encoder_features[i], x)
+            x        = torch.cat([x, encoder_features[i]], dim=1)
+            x        = self.dec_blocks[i](x)
+            #print(x.shape)
+        return x
+    
+
+    
+class UNet(nn.Module):
+    def __init__(self, enc_chs=(2,8, 16, 32, 64,128,256,512), dec_chs=(512, 256, 128, 64, 32, 16, 8), 
+                 num_class=2, retain_dim=False, out_sz=(128,128,128)):
+        super().__init__()
+        self.encoder     = Encoder(enc_chs)
+        self.decoder     = Decoder(dec_chs)
+        self.head        = nn.Conv3d(dec_chs[-1], num_class, 1)
+        self.retain_dim  = retain_dim
+
+    def forward(self, x):
+        enc_ftrs = self.encoder(x)
+        out      = self.decoder(enc_ftrs[::-1][0], enc_ftrs[::-1][1:])
+        out      = self.head(out)
+        return out
+
+
+class Unet_Stn(nn.Module):
+    
+    def __init__(self):
+        super().__init__()
+        
+        
+        self.unet = UNet()
+        
+        # #dense layer for the rotation params
+        # self.rot_params = linear_layer(256, 9, 'tanh', 0.3)
+        
+        # #dense layer for the rotation params
+        # self.trans_params = linear_layer(256, 3, 'linear', 0.3)
+        
+        self.localization = nn.Sequential(
+                nn.Conv3d(2, 4, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(4, 8, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(8, 16, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(16, 32, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(32, 64, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(64, 128, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True),
+                nn.Conv3d(128, 256, kernel_size=3, padding=1),
+                nn.MaxPool3d(2),
+                nn.LeakyReLU(True))
+                   
+        self.regression = nn.Sequential(nn.Linear(256,12))
+          
+          # Initialize the weights/bias with identity transformation
+        #self.regression[0].weight.data.zero_()
+        self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
+                                                         0, 1, 0, 0,
+                                                         0, 0, 1, 0], dtype=torch.float))
+        
+        
+        #### regression separetely on rotation and translation
+        #dense layer for the rotation params
+        self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9)) #nn.Tanh activation?
+      #self.rot_params[0].weight.data.zero_()
+        self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
+                                                         0, 1, 0,
+                                                         0, 0, 1], dtype=torch.float))
+        
+        #dense layer for the translation params
+        self.trans_params = nn.Linear(512*1*1*1, 3)           
+      #self.trans_params.weight.data.zero_()
+        self.trans_params.bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))        
+        
+        
+    def stn(self, x):
+        
+        unet_output = self.unet(x)
+        
+        xs = self.localization(unet_output)
+        xs = xs.view(xs.shape[0],-1)
+        theta = self.regression(xs)
+        theta = theta.view(-1, 3, 4)
+        # rot_params = self.rot_params(xs)
+        # trans_params = self.trans_params(xs)
+        
+        # rot_params = rot_params.view(-1,3,3)
+        # trans_params = trans_params.view(-1,1,3)
+        
+        # theta = torch.zeros((1,3,4))
+        # theta[:,:,:-1] = rot_params
+        # theta[:,:,-1] = trans_params
+        # theta = theta.to(device)
+        
+        #movable = x[:,1,:,:,:]
+        #movable = torch.ex
+    
+        theta = theta.view(-1, 3, 4).to(device)
+        x = x.to(device)
+        
+        if x.shape[0] > 1: #batch_size higher than 1
+        
+            #exapnd on channel dim to keep batch size
+            movable = torch.unsqueeze(x[:,1,:,:,:],1) 
+            
+            grid = torch.empty((x.shape[0],
+                                x.shape[2],
+                                x.shape[3],
+                                x.shape[4],
+                                3)).to(device) #affine gird creates 3 channels (3 axis)
+        
+            for i in range(x.shape[0]):
+                
+                single_theta = torch.unsqueeze(theta[i,:,:],0)#select one item at time
+                movable_size = (1, 1, x.shape[2], x.shape[3], x.shape[4])
+                
+                #get the single interpolation grid
+                grid[i,:,:,:,:] = F.affine_grid(single_theta, 
+                                                movable_size,
+                                                align_corners=False)
+                
+        else:         
+        
+            #exapnd on batch dim to keep correct shape
+            movable = torch.unsqueeze(x[:,1,:,:,:],0)
+            
+            #find the interpolation grid
+            grid = F.affine_grid(theta, 
+                                 movable.shape,
+                                 align_corners=False)
+        
+           
+        x = F.grid_sample(movable, grid,
+                          align_corners=False,
+                          mode = 'bilinear')
+    
+        return x, theta
+        
+    def forward(self, fixed, movable):
         
         #concatenatation over the last dimension
         concat_data = torch.cat((fixed,movable),dim=1)#.to(device)      
-        #first layer
-        res_conv_1 = self.conv_1(concat_data)
-        #2nd layer
-        res_conv_2 = self.conv_2(res_conv_1)
-        #3rd layer
-        res_conv_3 = self.conv_3(res_conv_2)
-        #4th layer
-        res_conv_4 = self.conv_4(res_conv_3)
-        #5th layer
-        res_conv_5 = self.conv_5(res_conv_4)
-        #6th
-        res_conv_6 = self.conv_6(res_conv_5)
-        #7th 
-        res_conv_7 = self.conv_7(res_conv_6)
-
-        rot_params = self.rot_params(torch.transpose(res_conv_7,1,-1))
-        trans_params = self.trans_params(torch.transpose(res_conv_7,1,-1))
-        affine_params = torch.cat((trans_params,rot_params),dim=-1)
         
-        affine_params = self.first_linear(torch.transpose(res_conv_7,1,-1))
+        padded_output, theta = self.stn(concat_data)
         
-        encoded = self.linear_before_dec(affine_params)
-        encoded = torch.transpose(encoded,-1,1)
+        return padded_output, theta
 
-        #decoder
-        res_deconv_1 = self.upoconv_1(torch.cat((encoded, res_conv_7),dim=1))
-        #2nd decoder layer with skip
-        res_deconv_2 = self.upoconv_2(torch.cat((res_conv_6,res_deconv_1),dim=1))        
-        #3rd decoder layer with skip
-        res_deconv_3 = self.upoconv_3(torch.cat((res_conv_5,res_deconv_2),dim=1))       
-        #4th decoder layer with skip
-        res_deconv_4 = self.upoconv_4(torch.cat((res_conv_4,res_deconv_3),dim=1))        
-        #5th decoder layer with skip
-        res_deconv_5 = self.upoconv_5(torch.cat((res_conv_3,res_deconv_4),dim=1)) 
-        #6th decoder layer with skip
-        res_deconv_6 = self.upoconv_6(torch.cat((res_conv_2,res_deconv_5),dim=1))
-        #6th decoder layer with skip
-        res_deconv_7 = self.upoconv_7(torch.cat((res_conv_1,res_deconv_6),dim=1))
 
-        #last decoder layer
-        decoded = self.last_dec_layer(res_deconv_7)
-            
-        #spatial transorformation
-        padded_output = self.spatial_trans(movable,decoded)
-        
-        return padded_output, rot_params, trans_params
+
+#%% Recurrent STN
+
+
+class ReSTN(nn.Module):
+    
+    #this function will define the skeleton of the network
+    def __init__(self):
+      super(ReSTN, self).__init__()
+      
+      self.identity_transformation = torch.tensor([1, 0, 0, 0, 
+                                                       0, 1, 0, 0,
+                                                       0, 0, 1, 0], 
+                                                  dtype=torch.float)
+      
+      
+      self.localization = nn.Sequential(
+              nn.Conv3d(2, 4, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(4, 8, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(8, 16, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(16, 32, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True))
                  
+      # self.regression = nn.Sequential(nn.Linear(256*1*1*1,128),
+      #                                  nn.LeakyReLU(True),
+      #                                  nn.Linear(128,64),
+      #                                  nn.LeakyReLU(True),
+      #                                  nn.Linear(64,12))
+
+      
+      
+      self.rotation = nn.Sequential(nn.Linear(256*1*1*1,128),
+                                       nn.LeakyReLU(True),
+                                       nn.Linear(128,64),
+                                       nn.LeakyReLU(True),
+                                       nn.Linear(64,9))      
+      self.rotation[-1].bias.data.copy_(torch.tensor([1, 0, 0, 
+                                                      0, 1, 0,
+                                                      0, 0, 1], dtype=torch.float))
+      
+      
+      self.translation = nn.Sequential(nn.Linear(256*1*1*1,128),
+                                        nn.LeakyReLU(True),
+                                        nn.Linear(128,64),
+                                        nn.LeakyReLU(True),
+                                        nn.Linear(64,32),
+                                        nn.LeakyReLU(True),
+                                        nn.Linear(32,3))
+      self.translation[-1].bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
+      
+
+        
+        # Initialize the weights/bias with identity transformation
+        
+      # self.regression[-1].weight.data.zero_()
+      # self.regression[-1].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
+      #                                                     0, 1, 0, 0,
+      #                                                     0, 0, 1, 0], dtype=torch.float))
+      
+
+    def stn_transformation(self,x, theta):
+        
+        theta = theta.view(-1, 3, 4).to(device)
+        x = x.to(device)
+        
+        if x.shape[0] > 1: #batch_size higher than 1
+        
+            #exapnd on channel dim to keep batch size
+            movable = torch.unsqueeze(x[:,1,:,:,:],1) 
+            
+            grid = torch.empty((x.shape[0],
+                                x.shape[2],
+                                x.shape[3],
+                                x.shape[4],
+                                3)).to(device) #affine gird creates 3 channels (3 axis)
+        
+            for i in range(x.shape[0]):
+                
+                single_theta = torch.unsqueeze(theta[i,:,:],0)#select one item at time
+                movable_size = (1, 1, x.shape[2], x.shape[3], x.shape[4])
+                
+                #get the single interpolation grid
+                grid[i,:,:,:,:] = F.affine_grid(single_theta, 
+                                                movable_size,
+                                                align_corners=False)
+                
+        else:         
+        
+            #exapnd on batch dim to keep correct shape
+            movable = torch.unsqueeze(x[:,1,:,:,:],0)
+            
+            #find the interpolation grid
+            grid = F.affine_grid(theta, 
+                                 movable.shape,
+                                 align_corners=False)
+            
+        x = F.grid_sample(x, grid,
+                          align_corners=False,
+                          mode = 'bilinear')
+        
+        return x
+
+    def combine(self,curr_theta, delta_theta):
+        
+        #curr_theta.view
+        tmp_zeros_vec = torch.zeros((curr_theta.shape[0],1,4)).to(device)
+        a = torch.hstack([curr_theta,tmp_zeros_vec])
+        a[:,-1,-1] = torch.ones((curr_theta.shape[0]))
+        b = torch.hstack([delta_theta, tmp_zeros_vec])
+        b[:,-1,-1] = torch.ones((curr_theta.shape[0]))
+        #b = b + torch.eye(4, device = device)        
+        return torch.matmul(a, b)
+ 
+
+
+    def network(self, fixed, warped, movable, old_theta):
+       
+        data = torch.cat((fixed, warped),dim=1).to(device)
+        #localization 
+        features = self.localization(data)
+        features = features.view(features.shape[0],1,-1)
         
 
+        
+        #get the parameters
+        delta_rot = self.rotation(features).view(-1,3,3)
+        delta_tra = self.translation(features).view(-1,3,1)
+        #stack them together
+        delta_theta = torch.cat((delta_rot,delta_tra),dim=-1)#
+       
+        #delta_theta = self.regression(features)
+        #combine the delta params with the current one
+        theta = self.combine(old_theta, 
+                             delta_theta.view(-1,3,4))
+
+       
+        #apply new transformation
+        warped_data = self.stn_transformation(movable,
+                                              theta[:,:-1,:])
+       
+        return theta[:,:-1,:], warped_data
+       
+        
+    def forward(self, fixed, movable):
+        
+        all_warped = []
+        all_theta = []
+        
+        curr_theta = torch.tile((self.identity_transformation).view(-1,3,4), 
+                                (movable.shape[0],1,1)).to(device)
+        warped_data = movable
+        
+        all_warped.append(warped_data)
+        all_theta.append(curr_theta)           
+        
+        
+        
+        for i in range(4):
+            #print(i)
+            
+            
+            curr_theta, warped_data = self.network(fixed, 
+                                              warped_data,
+                                              movable,
+                                              curr_theta)
+            
+            all_warped.append(warped_data)
+            all_theta.append(curr_theta)           
+
+            
+        return warped_data, curr_theta
+            
+
+
+
+
+
+
+
+
+
+
+
+        
+        
+        # import numpy as np
+        # fixed_deconv = np.squeeze(res_deconv_7[0,0,:,:,:].cpu().detach().numpy())
+        # mov_deconv = np.squeeze(res_deconv_7[0,1,:,:,:].cpu().detach().numpy())
+        # pad = np.squeeze(padded_output.cpu().detach().numpy())
+        # dec = np.squeeze(decoded.cpu().detach().numpy())
+        
+        # fixed_input = np.squeeze(fixed.cpu().detach().numpy())
+        # mov_input = np.squeeze(movable.cpu().detach().numpy())
+       
+        # f,ax = plt.subplots(1,4)
+        # ax[0].imshow(fix[:,:,64]-m[:,:,64])#fixed_deconv[:,:,64])
+        # ax[1].imshow(u[0,:,:,64]-fix[:,:,64])#mov_deconv[:,:,64])
+        # ax[2].imshow(u[1,:,:,64]-m[:,:,64])
+        # ax[3].imshow(u[1,:,:,64]-u[0,:,:,64])
+        # ax[1,0].imshow(w2[0,:,:,64])
+        # ax[1,1].imshow(w2[1,:,:,64])
+    
+        # f, ax = plt.subplots(1,3)
+        # ax[0].imshow(out[0,:,:,64])
+        # ax[1].imshow(out[1,:,:,64])
+        # ax[2].imshow(out[0,:,:,64]-out[1,:,:,64])
    
-     
