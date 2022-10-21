@@ -37,13 +37,16 @@ def mosaic_to_mat(dcm_file):
     outfile = dcm_file[:-3]+'nii'
         
     
-    nii = dicom_array_to_nifti(dicom_header,outfile,reorient_nifti=True)
+    #nii = dicom_array_to_nifti(dicom_header,outfile,reorient_nifti=True)
+    nii = dicom_array_to_nifti(dicom_header,outfile)
     
     mat = nii['NII'].get_fdata()
+    world_affine = nii['NII'].affine
+    
     if os.path.isfile(nii['NII_FILE']):
         os.remove(nii['NII_FILE'])
     
-    return mat
+    return mat, world_affine
     
     
 
@@ -156,7 +159,7 @@ def mat_to_mosaic(mosaic_dcm, data_matrix, outdir, idx_dcm, name):
     
     
 
-def output_processing(fixed,movable,outputs,orig_dim):
+def output_processing(fixed,movable,outputs,orig_dim, world_affine):
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")    
     dice_fn = Dice()
@@ -164,9 +167,14 @@ def output_processing(fixed,movable,outputs,orig_dim):
     
     data_tensor = outputs[0]
     matrix = np.squeeze(outputs[1].cpu().detach().numpy())
-    
+    world_affine = np.squeeze(world_affine.cpu().detach().numpy())
+   
     
     matrix = ThetaToM(matrix, 128, 128, 128)
+    #matrix = matrix[:-1,:]
+    
+    #trasnform to world coordinates
+    matrix =  np.linalg.inv(world_affine) @ np.linalg.inv(matrix) @ world_affine
     matrix = matrix[:-1,:]
 
     #rot_params = outputs[1].cpu().detach().numpy()
@@ -199,13 +207,25 @@ def output_processing(fixed,movable,outputs,orig_dim):
     q5 = np.arcsin(rot_mat[0,2]) #q5
     motion_params[0,4] = np.rad2deg(q5)
     
-    q4 = math.atan2(rot_mat[1,2]/math.cos(q5),
-                    rot_mat[2,2]/math.cos(q5)) #q4
-    motion_params[0,3] = np.rad2deg(q4)
     
-    q6 = math.atan2(rot_mat[0,1]/math.cos(q5),
-                    rot_mat[0,0]/math.cos(q5)) #q6
-    motion_params[0,5] = np.rad2deg(q6)
+    if (abs(q5 - np.pi/2))**2 < 1e-9:
+        
+        q4 = 0
+        motion_params[0,3] = np.rad2deg(q4)
+        
+        q6 = math.atan2(-rot_mat[1,0],
+                        rot_mat[2,0]/rot_mat[0,2]) #q6
+        motion_params[0,5] = np.rad2deg(q6)  
+    
+    else:
+    
+        q4 = math.atan2(rot_mat[1,2]/math.cos(q5),
+                        rot_mat[2,2]/math.cos(q5)) #q4
+        motion_params[0,3] = np.rad2deg(q4)
+        
+        q6 = math.atan2(rot_mat[0,1]/math.cos(q5),
+                        rot_mat[0,0]/math.cos(q5)) #q6
+        motion_params[0,5] = np.rad2deg(q6)
     
     
     #estimate the dice coefficient with the target

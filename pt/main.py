@@ -17,15 +17,15 @@ import pandas as pd
  
 from network import AffineNet,Unet_Stn, ReSTN
 from losses import NCC, regularizer_rot_matrix
-from generators import Create_dataset
+from generators import Create_dataset, Create_test_dataset
 from util_functions import output_processing
-from online_create_pairs import create_pairs
+from online_create_pairs import create_pairs, create_pairs_for_testing
 
 # from dicom2nifti.convert_dicom import dicom_array_to_nifti
 # import pydicom
 #%% Data import
-datadir = '/home/ubuntu22/Desktop/ai_mc/'
-outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
+outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
 #%% Import model
 
@@ -48,7 +48,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 4,
 
 #%% Set some variables
 
-max_epochs = 20
+max_epochs = 10
 batch = 1
 
 training_image_loss = dict()
@@ -98,7 +98,7 @@ for epoch in range(max_epochs):
         
     #training 
     running_loss = 0.0
-    for fixed, movable, orig_dim in training_generator:
+    for fixed, movable, orig_dim, nii_affine in training_generator:
         
         
         # zero the parameter gradients
@@ -132,10 +132,9 @@ for epoch in range(max_epochs):
 
     ###############VALIDATION#############################
     running_loss = 0.0
-    for fixed_val, movable_val, orig_dim in validation_generator:  
+    for fixed_val, movable_val, orig_dim, nii_affine in validation_generator:  
         
-        #nii2remove += nii1
-        #nii2remove += nii2
+
         
 
         # predict classes using images from the training set
@@ -165,7 +164,7 @@ for epoch in range(max_epochs):
         min_valid_loss = mean_valid_loss
         # Saving State Dict
         torch.save(model.state_dict(), 
-                   os.path.join(outdir,'affinesaved_model.pth'))
+                   os.path.join(outdir,'AffineNet_data_saved_model.pth'))
         print('Model saved!')
             
     
@@ -173,87 +172,7 @@ for epoch in range(max_epochs):
     print('Elapsed time (s):',time.time()-start)
     
     
-    #[os.remove(tmp) for tmp in nii2remove]
-      
-        
-#%% Some visualization
 
-# orig_diff = np.squeeze((movable_val['data']-fixed_val['data']).detach().numpy())
-# aligned_diff = np.squeeze((outputs[0].cpu()-fixed_val['data']).detach().numpy())
-
-
-# if batch>1:
-#     f, ax = plt.subplots(2,batch)
-    
-#     for i,b in enumerate(range(batch)):
-            
-#         ax[0,i].imshow(orig_diff[i,:,:,64], cmap='Greys_r')
-#         ax[1,i].imshow(aligned_diff[i,:,:,64], cmap='Greys_r')
-# else:
-    
-#     f, ax = plt.subplots(2,1)
-#     ax[0].imshow(orig_diff[:,:,64], cmap='Greys_r')
-#     ax[1].imshow(aligned_diff[:,:,64], cmap='Greys_r')
-
-#%% Testing data
-
-### LOAD BEST MODEL######
-model2 = AffineNet()
-model2.load_state_dict(torch.load(os.path.join(outdir,'affine_saved_model.pth')))
-model2.eval()
-model2 = model2.to(device)
-
-testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_sub_from_training_run7_testing_set.pkl'),'rb'))
-testing_set = Create_dataset(testing_files, (128,128,128))
-testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
-
-motion_params = np.empty((len(testing_set), 6))
-aligned_data = []
-all_dice_post = []
-all_dice_pre = []
-i=0
-
-for fixed_test, movable_test, orig_dim in testing_generator: #just testing
-    
-    outputs = model2(fixed_test['data'].type(torch.FloatTensor).to(device),
-                    movable_test['data'].type(torch.FloatTensor).to(device))
-    
-    crop_vol, curr_motion, dice_post, dice_pre = output_processing(fixed_test['data'],
-                                                         movable_test['data'],
-                                                         outputs, 
-                                                         orig_dim)
-    aligned_data.append(crop_vol)
-    motion_params[i,:] = curr_motion
-    all_dice_post.append(dice_post)
-    all_dice_pre.append(dice_pre)
-    
-    i +=1
-    
-    
-# f, ax = plt.subplots(1,1)
-
-# ax.plot(all_dice_post)
-# ax.plot(all_dice_pre)
-# plt.legend(['post','pre']) 
-
-# f, ax = plt.subplots(1,1)
-
-# ax.plot(motion_params)
-# plt.legend(['X trans','Y trans','Z trans',
-#             'X rot','Y rot','Z rot'])  
-# plt.title('AI motion')    
-
-# #load spm aligned parameters
-# spm_params_dir = os.path.join(datadir,'dcm','test','sub10','run7')
-# file = glob.glob(os.path.join(spm_params_dir,'rp*.txt'))[0]
-# spm_motion = np.loadtxt(os.path.join(file))
-
-# f, ax = plt.subplots(1,1)
-
-# ax.plot(spm_motion)
-# plt.legend(['X trans','Y trans','Z trans',
-#             'X rot','Y rot','Z rot'])  
-# plt.title('Orig motion')
 
 #%% Save performance of the both training and validation
 training_loss = np.array(training_loss).reshape((int(len(training_loss)/3),3))
@@ -261,14 +180,47 @@ validation_loss = np.array(validation_loss).reshape((int(len(validation_loss)/3)
 
 training_df = pd.DataFrame(data = training_loss, columns=['Loss', 'Iter', 'Epoch'])
 validation_df = pd.DataFrame(data = validation_loss, columns=['Loss', 'Iter', 'Epoch'])
-motion_df = pd.DataFrame(data=motion_params, columns=['X trans','Y trans','Z trans',
-            'X rot','Y rot','Z rot'])
-pre_mse_df = pd.DataFrame(data=all_dice_pre, columns=['Pre MSE'])
-post_mse_df = pd.DataFrame(data=all_dice_post, columns=['Pre MSE'])
+
+training_df.to_csv(os.path.join(outdir,'AffineNet_test_data_training_loss.csv'))
+validation_df.to_csv(os.path.join(outdir,'AffineNet_test_data_validation_loss.csv'))
 
 
-training_df.to_csv(os.path.join(outdir,'AffineNet_training_loss.csv'))
-validation_df.to_csv(os.path.join(outdir,'AffineNet_validation_loss.csv'))
-post_mse_df.to_csv(os.path.join(outdir,'AffineNet_post_MSE.csv'))
-pre_mse_df.to_csv(os.path.join(outdir,'AffineNet_pre_MSE.csv'))
+#%% testing 
 
+
+model = AffineNet()
+model.load_state_dict(torch.load(os.path.join(outdir,'AffineNet_test_data_saved_model.pth')))
+model.eval()
+model = model.to(device)
+
+#testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
+testing_set = Create_test_dataset(testing_files, (128,128,128))
+testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
+
+motion_params = np.empty((len(testing_set), 6))
+aligned_data = []
+mse = []
+i=0
+timing = []
+
+for fixed_test, movable_test, orig_dim in testing_generator: #just testing
+    start = time.time()
+    outputs = model(fixed_test['data'].type(torch.FloatTensor).to(device),
+                    movable_test['data'].type(torch.FloatTensor).to(device))
+    
+    crop_vol, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
+                                                         movable_test['data'],
+                                                         outputs, 
+                                                         orig_dim)
+    timing.append(time.time()-start)
+    aligned_data.append(crop_vol)
+    motion_params[i,:] = curr_motion
+    mse += [mse_pre] + [mse_post]
+    
+    i +=1
+
+
+#%% Just interested in motion
+plt.plot(motion_params)
+plt.legend(['Trans X', 'Trans Y', 'Trans Z',
+            'Rot X', 'Rot Y', 'Rot Z'])

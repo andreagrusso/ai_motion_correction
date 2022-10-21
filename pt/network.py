@@ -49,7 +49,8 @@ class AffineNet(nn.Module):
       
 
         #regression on 12 parameters
-      self.regression = nn.Sequential(nn.Linear(512*1*1*1,12))
+      self.regression = nn.Sequential(nn.Linear(512*1*1*1,12),
+                                      nn.Dropout(p=0.3))
         
           # Initialize the weights/bias with identity transformation
       #self.regression[0].weight.data.zero_()
