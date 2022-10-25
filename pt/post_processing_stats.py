@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
+#import hiddenlayer as hl
+
+
 from network import AffineNet
 from generators import Create_dataset
 from util_functions import output_processing
@@ -22,19 +25,25 @@ from util_functions import output_processing
 #%% Data
 
 datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'
-model_dir = 'AffineNet_bs1_20ep'
-sub = 'sub_from_training_run7'
+model_dir = 'test'
+sub = 'sub00_run1'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'ai')
 
 
-#%% RUn the model 
+#%% Load and plot the model
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 model = AffineNet()
 model.load_state_dict(torch.load(os.path.join(datadir,'preliminary_nn_results',model_dir,'AffineNet_saved_model.pth')))
 model.eval()
+
+
+#hl.build_graph(model,(torch.zeros([1, 1, 128, 128, 128]),torch.zeros([1, 1, 128, 128, 128])))
+
 model = model.to(device)
+
+#%% Run the model
 
 testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
 testing_set = Create_dataset(testing_files, (128,128,128))
@@ -45,6 +54,10 @@ aligned_data = []
 mse = []
 i=0
 timing = []
+
+diff_vol_pre = []
+diff_vol_post = []
+
 
 for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just testing
     start = time.time()
@@ -61,6 +74,9 @@ for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just
     motion_params[i,:] = curr_motion
     mse += [mse_pre] + [mse_post]
     
+    diff_vol_pre.append(abs(np.squeeze(movable_test['data'].cpu().detach().numpy()-fixed_test['data'].cpu().detach().numpy())))
+    diff_vol_post.append(abs(np.squeeze(outputs[0].cpu().detach().numpy()-fixed_test['data'].cpu().detach().numpy())))
+                        
     i +=1
 
 #%% Model metrics
@@ -142,5 +158,41 @@ plt.tight_layout()
 plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
 
 
-#%%
+#%% plot vol difference
+import matplotlib as mpl
+sns.set_theme(style="darkgrid")
+
+f, ax = plt.subplots(2,4, figsize=(15,20))
+
+index_plot = [np.random.randint(0, len(motion_params)) for i in range(4)]
+
+index_plot.sort()   
+for idx, vol in enumerate(index_plot):
+    
+    
+    global_min= min([np.min(diff_vol_pre[vol][:,:,64]),
+                     np.min(diff_vol_post[vol][:,:,64])])
+    
+    global_max = max([np.max(diff_vol_pre[vol][:,:,64]),
+                     np.max(diff_vol_post[vol][:,:,64])])
+        
+    ax[0,idx].imshow((diff_vol_pre[vol][:,:,64]).T, cmap='Reds')
+    ax[0,idx].set_title('Before alignment: vol n '+str(vol))
+    norm = mpl.colors.Normalize(vmin=global_min,
+                                vmax=global_max)
+    plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='Reds'), 
+                 ax=ax[0,idx],
+                 shrink=0.3)  
+    
+    ax[1,idx].imshow((diff_vol_post[vol][:,:,64]).T, cmap='Reds')
+    ax[1,idx].set_title('After alignment: vol n '+str(vol))
+    norm = mpl.colors.Normalize(vmin=global_min,
+                                vmax=global_max)
+    plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap='Reds'), 
+                 ax=ax[1,idx],
+                 shrink=0.3)
+    plt.tight_layout()
+    plt.suptitle('Difference between movable and fixed voulumes before and after alignment')
+    
+plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
 

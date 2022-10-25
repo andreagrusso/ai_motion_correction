@@ -45,23 +45,24 @@ class AffineNet(nn.Module):
               nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),
               nn.LeakyReLU(True),
               nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1),
-              nn.LeakyReLU(True))
+              nn.LeakyReLU(True), 
+              nn.Dropout(p=0.3))
       
 
         #regression on 12 parameters
-      self.regression = nn.Sequential(nn.Linear(512*1*1*1,12),
-                                      nn.Dropout(p=0.3))
-        
-          # Initialize the weights/bias with identity transformation
-      #self.regression[0].weight.data.zero_()
-      self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
-                                                           0, 1, 0, 0,
-                                                           0, 0, 1, 0], dtype=torch.float))
+      # self.regression = nn.Sequential(nn.Linear(512*1*1*1,12),
+      #                                      nn.Dropout(p=0.3))
+         
+      #          # Initialize the weights/bias with identity transformation
+      # self.regression[0].weight.data.zero_()
+      # self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
+      #                                                           0, 1, 0, 0,
+      #                                                           0, 0, 1, 0], dtype=torch.float))
         
         
         #### regression separetely on rotation and translation
         #dense layer for the rotation params
-      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9),nn.Tanh())# tanh activation?
+      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9), nn.Tanh())#,nn.Tanh())# tanh activation?
       #self.rot_params[0].weight.data.zero_()
       self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
                                                          0, 1, 0,

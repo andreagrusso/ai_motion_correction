@@ -25,7 +25,7 @@ from online_create_pairs import create_pairs, create_pairs_for_testing
 # import pydicom
 #%% Data import
 datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
-outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
 #%% Import model
 
@@ -164,11 +164,12 @@ for epoch in range(max_epochs):
         min_valid_loss = mean_valid_loss
         # Saving State Dict
         torch.save(model.state_dict(), 
-                   os.path.join(outdir,'AffineNet_data_saved_model.pth'))
+                   os.path.join(outdir,'AffineNet_saved_model.pth'))
         print('Model saved!')
             
     
-   
+    print('Update learning rate')
+    lr_schedule.step()
     print('Elapsed time (s):',time.time()-start)
     
     
@@ -181,46 +182,47 @@ validation_loss = np.array(validation_loss).reshape((int(len(validation_loss)/3)
 training_df = pd.DataFrame(data = training_loss, columns=['Loss', 'Iter', 'Epoch'])
 validation_df = pd.DataFrame(data = validation_loss, columns=['Loss', 'Iter', 'Epoch'])
 
-training_df.to_csv(os.path.join(outdir,'AffineNet_test_data_training_loss.csv'))
-validation_df.to_csv(os.path.join(outdir,'AffineNet_test_data_validation_loss.csv'))
+training_df.to_csv(os.path.join(outdir,'AffineNet_training_loss.csv'))
+validation_df.to_csv(os.path.join(outdir,'AffineNet_validation_loss.csv'))
 
 
 #%% testing 
 
 
-model = AffineNet()
-model.load_state_dict(torch.load(os.path.join(outdir,'AffineNet_test_data_saved_model.pth')))
-model.eval()
-model = model.to(device)
+# model = AffineNet()
+# model.load_state_dict(torch.load(os.path.join(outdir,'AffineNet_data_saved_model.pth')))
+# model.eval()
+# model = model.to(device)
+# sub = 'sub00_run1'
+# testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
+# testing_set = Create_test_dataset(testing_files, (128,128,128))
+# testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
 
-#testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
-testing_set = Create_test_dataset(testing_files, (128,128,128))
-testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
+# motion_params = np.empty((len(testing_set), 6))
+# aligned_data = []
+# mse = []
+# i=0
+# timing = []
 
-motion_params = np.empty((len(testing_set), 6))
-aligned_data = []
-mse = []
-i=0
-timing = []
-
-for fixed_test, movable_test, orig_dim in testing_generator: #just testing
-    start = time.time()
-    outputs = model(fixed_test['data'].type(torch.FloatTensor).to(device),
-                    movable_test['data'].type(torch.FloatTensor).to(device))
+# for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just testing
+#     start = time.time()
+#     outputs = model(fixed_test['data'].type(torch.FloatTensor).to(device),
+#                     movable_test['data'].type(torch.FloatTensor).to(device))
     
-    crop_vol, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
-                                                         movable_test['data'],
-                                                         outputs, 
-                                                         orig_dim)
-    timing.append(time.time()-start)
-    aligned_data.append(crop_vol)
-    motion_params[i,:] = curr_motion
-    mse += [mse_pre] + [mse_post]
+#     crop_vol, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
+#                                                          movable_test['data'],
+#                                                          outputs, 
+#                                                          orig_dim,
+#                                                          world_affine)
+#     timing.append(time.time()-start)
+#     aligned_data.append(crop_vol)
+#     motion_params[i,:] = curr_motion
+#     mse += [mse_pre] + [mse_post]
     
-    i +=1
+#     i +=1
 
 
-#%% Just interested in motion
-plt.plot(motion_params)
-plt.legend(['Trans X', 'Trans Y', 'Trans Z',
-            'Rot X', 'Rot Y', 'Rot Z'])
+# #%% Just interested in motion
+# plt.plot(motion_params)
+# plt.legend(['Trans X', 'Trans Y', 'Trans Z',
+#             'Rot X', 'Rot Y', 'Rot Z'])
