@@ -10,12 +10,13 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import numpy as np
-import os, torch, math, sys, imageio, glob
+import os, torch, math, imageio, glob
 import torchio as tio
 from losses import Dice
 import nibabel as nb
 from scipy import ndimage
-
+import ants
+from nilearn.image import new_img_like 
 
 from dicom2nifti.convert_dicom import dicom_array_to_nifti
 import pydicom
@@ -52,50 +53,6 @@ def mosaic_to_mat(dcm_file):
     return mat, world_affine
     
     
-
-
-
-# def mosaic_to_mat(mosaic_dcm):
-    
-    
-    
-#     acq_matrix = np.array(mosaic_dcm.AcquisitionMatrix)
-#     acq_matrix = acq_matrix[acq_matrix!=0]
-#     vox_col, vox_row = mosaic_dcm.Columns, mosaic_dcm.Rows
-#     data_2d = mosaic_dcm.pixel_array
-    
-#     if '0x0019, 0x100a' in mosaic_dcm.keys():
-#         nr_slices = mosaic_dcm[0x0019, 0x100a].value
-#     else:
-#         #print('DCM without number of total slices')
-#         nr_slices = int(vox_col/acq_matrix[1])*int(vox_row/acq_matrix[0])
-    
-#     # data_matrix = np.zeros((acq_matrix[0],acq_matrix[1], nr_slices))
-#     data_matrix = np.zeros((nr_slices, acq_matrix[1], acq_matrix[0]))
-
-    
-#     col_idx = np.arange(0,vox_col+1,acq_matrix[1])
-#     row_idx = np.arange(0,vox_row+1,acq_matrix[0])
-    
-#     i=0 #index to substract from the total number of slice
-#     for r, row_id in enumerate(row_idx[:-1]):
-        
-#         if i==nr_slices-1:
-#             break
-        
-#         #loop over columns
-#         for c,col_id in enumerate(col_idx[:-1]):
-            
-#             c_slice = data_2d[row_id:row_idx[r+1],col_id:col_idx[c+1]]
-#             data_matrix[i,:,:] = np.fliplr(c_slice)
-#             i += 1
-            
-#             if i==nr_slices-1:
-#                 break          
-    
-#     data_matrix = np.rot90(np.transpose(data_matrix,[2,1,0]))
-#     return data_matrix
-
 
 
 def mat_to_mosaic(mosaic_dcm, data_matrix, outdir, idx_dcm, name):
@@ -378,3 +335,96 @@ def moco_movie(dataArr, sub_name, outdir):
     print('Deleting dump directory')
     os.system(f'rm -r {dumpFolder}')
     print('Done.')
+
+
+def ants_moco(datafile, outdir):
+    """
+    Perform the motion correction with antspy.
+    Credit to Alessandra Pizzuti
+    Adpated from 
+    https://github.com/27-apizzuti/Atomics/blob/main/MotionCorrection/my_ants_rigid_motion_correction.py
+    
+
+    Parameters
+    ----------
+    data : TYPE
+        DESCRIPTION.
+    outdir : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    Aligned data
+    array of affine matrices
+
+    """
+    
+    tmp_dir = os.path.join(outdir,'tmp')
+    print('Create temporary directory')
+    if not os.path.exists(tmp_dir):
+        os.mkdir(tmp_dir)
+    
+    #get the name of the fiel with no extension (assuming no dots in the name)
+    basename = os.path.basename(datafile).split('.')[0]
+    
+    #losd nifti 
+    nii = nb.load(datafile)
+    data = nii.get_fdata()
+    #get the fixed (first vol)
+    fixed = data[..., 0]
+    
+    
+    #save as nifti the reference volume
+    img = nb.Nifti1Image(fixed, header=nii.header, affine=nii.affine)
+    nb.save(img, os.path.join(tmp_dir, '{}_ref_vol.nii.gz'.format(basename)))
+    print('...Save {} in {}'.format('{}_ref_vol.nii.gz'.format(basename), os.path.join(tmp_dir)))
+    fixed = ants.image_read(os.path.join(tmp_dir, '{}_ref_vol.nii.gz'.format(basename)))
+    
+    
+    
+    #prepare output data
+    aligned_data = np.zeros_like(data)
+    #backward matrices
+    bwd_matrices = np.zeros((4,4,data.shape[-1]))
+    #forward matrices
+    fwd_matrices = np.zeros((4,4,data.shape[-1]))    
+
+    for idx_vol in range(data.shape[-1]):
+        print('Volume {}'.format(idx_vol))
+        myvol = data[..., idx_vol]
+
+        # Save individual volumes: this step is needed since ANTS registration input must be both ANTs object.
+        img = nb.Nifti1Image(myvol, header=nii.header, affine=nii.affine)
+        nb.save(img, os.path.join(tmp_dir, '{}_vol_{}.nii.gz'.format(basename, idx_vol)))
+        print('...Save {} in {}'.format('{}_vol_{}.nii.gz'.format(basename, idx_vol), os.path.join(tmp_dir)))
+        moving = ants.image_read(os.path.join(tmp_dir, '{}_vol_{}.nii.gz'.format(basename, idx_vol)))
+    
+        print('...Find trasformation matrix for {}, vol {}'.format(basename, idx_vol))
+        mytx = ants.registration(fixed=fixed, moving=moving, type_of_transform = 'Rigid')
+        print('...Save transformation matrix')
+        bwd_matrices[...,idx_vol] = mytx['bwdtransforms'][0]
+        fwd_matrices[...,idx_vol] = mytx['fwdtransforms'][0]
+
+    
+        # // Apply transformation
+        mywarpedimage = ants.apply_transforms(fixed=fixed, moving=moving, 
+                                              transformlist=mytx['fwdtransforms'], 
+                                              interpolator='bSpline')
+        ants.image_write(mywarpedimage, os.path.join(tmp_dir, '{}_vol_{}_warped.nii.gz'.format(basename, idx_vol)))
+        # Step needed to read the warped image
+        nii2 = nb.load(os.path.join(tmp_dir, '{}_vol_{}_warped.nii.gz'.format(basename, idx_vol)))
+        mywarp = nii2.get_fdata()
+        aligned_data[..., idx_vol] = mywarp
+        
+    new_nii = new_img_like(nii,aligned_data)
+    new_nii.to_filename(os.path.join(outdir,'{}_ants_warped.nii.gz'.format(basename)))
+    print('ANTs aligned nifti saved!')
+    print('... Removing temporary directory')
+    os.remove(tmp_dir)
+    
+    
+        
+    return bwd_matrices, fwd_matrices
+    
+    
+    
