@@ -20,12 +20,12 @@ import nibabel as nb
 
 from network import AffineNet
 from generators import Create_dataset
-from util_functions import output_processing, moco_movie
+from util_functions import output_processing, moco_movie, ants_moco
 
 #%% Data
 
-datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'
-model_dir = 'test'
+datadir = '/home/ubuntu22/Desktop/ai_mc'
+model_dir = 'affine_bs1_20ep_v02'
 sub = 'sub00_run1'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'ai')
 
@@ -37,9 +37,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = AffineNet()
 model.load_state_dict(torch.load(os.path.join(datadir,'preliminary_nn_results',model_dir,'AffineNet_saved_model.pth')))
 model.eval()
-
-
-#hl.build_graph(model,(torch.zeros([1, 1, 128, 128, 128]),torch.zeros([1, 1, 128, 128, 128])))
 
 model = model.to(device)
 
@@ -200,12 +197,24 @@ for idx, vol in enumerate(index_plot):
     
 plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
 
+#%% get ANTS affine and compare
+
+
+
+pre_nii = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'*nii'))
+
+bwd_affine, fwd_affine = ants_moco(pre_nii[0], outdir)
+
+
+
+
+
+
 #%% MoCo movie
 
 aligned_4D = np.array(aligned_4D)
 aligned_4D = np.moveaxis(aligned_4D,[0,1,2,3],[3,0,1,2])
 
-pre_nii = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'*nii'))
 pre_nii_data = nb.load(pre_nii[0]).get_fdata()
 
 moco_movie(np.array(aligned_4D), sub+'_post', outdir)

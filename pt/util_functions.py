@@ -337,6 +337,22 @@ def moco_movie(dataArr, sub_name, outdir):
     print('Done.')
 
 
+
+
+def params2mat(params):
+    
+    mat = np.eye(4)
+    
+    #translation
+    mat[:-1,-1] = params[9:]
+    mat[:-1,:-1] = np.reshape(params[:9],(3,3))
+    
+    return mat
+
+
+
+
+
 def ants_moco(datafile, outdir):
     """
     Perform the motion correction with antspy.
@@ -402,8 +418,10 @@ def ants_moco(datafile, outdir):
         print('...Find trasformation matrix for {}, vol {}'.format(basename, idx_vol))
         mytx = ants.registration(fixed=fixed, moving=moving, type_of_transform = 'Rigid')
         print('...Save transformation matrix')
-        bwd_matrices[...,idx_vol] = mytx['bwdtransforms'][0]
-        fwd_matrices[...,idx_vol] = mytx['fwdtransforms'][0]
+        bwd_params = ants.read_transform(mytx['invtransforms'][0]).parameters
+        bwd_matrices[...,idx_vol] = params2mat(bwd_params)
+        fwd_params = ants.read_transform(mytx['fwdtransforms'][0]).parameters
+        fwd_matrices[...,idx_vol] = params2mat(fwd_params)
 
     
         # // Apply transformation
@@ -424,7 +442,7 @@ def ants_moco(datafile, outdir):
     
     
         
-    return bwd_matrices, fwd_matrices
+    return fwd_matrices
     
     
     
