@@ -14,13 +14,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-
+import nibabel as nb
 #import hiddenlayer as hl
 
 
 from network import AffineNet
 from generators import Create_dataset
-from util_functions import output_processing
+from util_functions import output_processing, moco_movie
 
 #%% Data
 
@@ -58,6 +58,8 @@ timing = []
 diff_vol_pre = []
 diff_vol_post = []
 
+aligned_4D = []
+
 
 for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just testing
     start = time.time()
@@ -69,6 +71,8 @@ for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just
                                                          outputs, 
                                                          orig_dim,
                                                          world_affine)
+    aligned_4D.append(crop_vol)
+    
     timing.append(time.time()-start)
     aligned_data.append(crop_vol)
     motion_params[i,:] = curr_motion
@@ -196,3 +200,13 @@ for idx, vol in enumerate(index_plot):
     
 plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
 
+#%% MoCo movie
+
+aligned_4D = np.array(aligned_4D)
+aligned_4D = np.moveaxis(aligned_4D,[0,1,2,3],[3,0,1,2])
+
+pre_nii = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'*nii'))
+pre_nii_data = nb.load(pre_nii[0]).get_fdata()
+
+moco_movie(np.array(aligned_4D), sub+'_post', outdir)
+moco_movie(pre_nii_data, sub+'_pre', outdir)
