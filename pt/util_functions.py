@@ -10,9 +10,12 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import numpy as np
-import os, torch, math, shutil
+import os, torch, math, sys, imageio, glob
 import torchio as tio
 from losses import Dice
+import nibabel as nb
+from scipy import ndimage
+
 
 from dicom2nifti.convert_dicom import dicom_array_to_nifti
 import pydicom
@@ -310,5 +313,68 @@ def ThetaToM(theta, w, h, d, return_inv=False):
         return M_inv
     return M
 
-#%% Training loops
+#%% MoCo movie
 
+
+
+def moco_movie(dataArr, sub_name, outdir):
+#credit to Alessandra Pizzuti
+#https://github.com/27-apizzuti/Atomics/blob/main/MotionCorrection/moco_movies.py
+
+
+
+    dumpFolder = os.path.join(outdir, 'moco_movie')
+    
+    if not os.path.exists(dumpFolder):
+        os.mkdir(dumpFolder)
+    
+    #dataArr = nb.load(os.path.join(PATH_IN, '{}.nii.gz'.format(FILE_IN))).get_fdata()
+    sliceNr = 32
+    globalMax = 0
+    globalMin = 0
+    
+    for frame in range(dataArr.shape[3]):
+        imgData = dataArr[:,:,int(sliceNr),frame]
+        rotated_img = ndimage.rotate(imgData, 90)
+    
+        if np.amin(rotated_img) <= globalMin:
+            globalMin = np.amin(rotated_img)
+        if np.amax(rotated_img) >= globalMax:
+            globalMax = np.amax(rotated_img)
+            # // change the maxium with 75 percentile
+    
+    for frame in range(dataArr.shape[3]):
+        imgData = dataArr[:,:,int(sliceNr),frame]
+        rotated_img = ndimage.rotate(imgData, 90)
+    
+    
+        rotated_img[0,0] = globalMax
+        rotated_img[0,1] = globalMin
+    
+        rotated_img = (rotated_img - globalMin)/ (globalMax-globalMin)
+        rotated_img = rotated_img.astype(np.float64)  # normalize the data to 0 - 1
+        rotated_img = 255 * rotated_img # Now scale by 255
+        img = rotated_img.astype(np.uint8)
+    
+        imageio.imwrite(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)), img)
+    
+    
+    files = sorted(glob.glob(os.path.join(outdir,'moco_movie','*.png')))
+    print('Creating gif from {} images'.format(len(files)))
+    # images = []
+    # for file in files:
+    #     filedata = imageio.imread(file)
+    #     images.append(filedata)
+    
+    # imageio.mimsave(os.path.join(PATH_IN, '{}_movie.gif'.format(FILE_IN)), images, duration = 1/10)
+    
+    writer = imageio.get_writer(os.path.join(outdir, '{}_movie.mp4'.format(sub_name)), fps=20)
+    # Increase the fps to 24 or 30 or 60
+    
+    for file in files:
+        filedata = imageio.imread(file)
+        writer.append_data(filedata)
+    writer.close()
+    print('Deleting dump directory')
+    os.system(f'rm -r {dumpFolder}')
+    print('Done.')
