@@ -51,13 +51,13 @@ class AffineNet(nn.Module):
 
         #regression on 12 parameters
       # self.regression = nn.Sequential(nn.Linear(512*1*1*1,12),
-      #                                      nn.Dropout(p=0.3))
+      #                                       nn.Dropout(p=0.3))
          
-      #          # Initialize the weights/bias with identity transformation
+      #           # Initialize the weights/bias with identity transformation
       # self.regression[0].weight.data.zero_()
       # self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
-      #                                                           0, 1, 0, 0,
-      #                                                           0, 0, 1, 0], dtype=torch.float))
+      #                                                            0, 1, 0, 0,
+      #                                                            0, 0, 1, 0], dtype=torch.float))
         
         
         #### regression separetely on rotation and translation
