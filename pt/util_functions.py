@@ -10,13 +10,14 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import numpy as np
-import os, torch, math, imageio, glob, shutil
+import os, torch, math, imageio, glob, shutil, time
 import torchio as tio
 import matplotlib.pyplot as plt
 import nibabel as nb
 from scipy import ndimage
 import ants
 from nilearn.image import new_img_like 
+from sklearn.preprocessing import MinMaxScaler
 
 from dicom2nifti.convert_dicom import dicom_array_to_nifti
 import pydicom
@@ -178,7 +179,7 @@ def output_processing(fixed,movable,outputs,orig_dim):
     
     fixed = fixed['data'].to(device)
     data_tensor = outputs[0].to(device)
-    movable = movable.to(device)
+    movable = movable['data'].to(device)
     
     #dice with the aligned data
     dice_post = mse_fn(fixed,data_tensor)    
@@ -256,10 +257,11 @@ def ThetaToM(theta, w, h, d, return_inv=False):
 
 
 
-def moco_movie(dataArr, sub_name, outdir):
-#credit to Alessandra Pizzuti
+def moco_movie(datalist, sub_name, outdir):
+#inspired by Alessandra Pizzuti's code
 #https://github.com/27-apizzuti/Atomics/blob/main/MotionCorrection/moco_movies.py
-
+    
+    data_ai, data_std = datalist
 
 
     dumpFolder = os.path.join(outdir, 'moco_movie')
@@ -269,52 +271,38 @@ def moco_movie(dataArr, sub_name, outdir):
     
     #dataArr = nb.load(os.path.join(PATH_IN, '{}.nii.gz'.format(FILE_IN))).get_fdata()
     sliceNr = 32
-    globalMax = 0
-    globalMin = 0
     
-
-    
-    for frame in range(dataArr.shape[3]):
-        imgData = dataArr[:,:,int(sliceNr),frame]
-        rotated_img = ndimage.rotate(imgData, 90)
-    
-        if np.amin(rotated_img) <= globalMin:
-            globalMin = np.amin(rotated_img)
-        if np.amax(rotated_img) >= globalMax:
-            globalMax = np.amax(rotated_img)
-            # // change the maxium with 75 percentile
+    scaler = MinMaxScaler()
+    #ai data are already scaled in [0-1]
+    for i in range(data_std.shape[3]):
+        
+        data_std[...,i] = scaler.fit_transform(data_std[...,i].reshape(-1,1)).reshape(data_std[...,i].shape)
 
 
 
-    ########### Process the first volume #####################################
-    fixed_frame =  ndimage.rotate(dataArr[:,:,int(sliceNr),0],90)  
-    fixed_frame[0,0] = globalMax
-    fixed_frame[0,1] = globalMin
-    
-    fixed_frame = (fixed_frame - globalMin)/ (globalMax-globalMin)
-    fixed_frame = fixed_frame.astype(np.float64)  # normalize the data to 0 - 1
-    fixed_frame = 255 * fixed_frame # Now scale by 255
 
 ############# LOOP FOR ALL OTHER VOLUMES ######################################    
-    for frame in range(dataArr.shape[3]):
-        imgData = dataArr[:,:,int(sliceNr),frame]
-        rotated_img = ndimage.rotate(imgData, 90)
-    
-    
-        rotated_img[0,0] = globalMax
-        rotated_img[0,1] = globalMin
-    
-        rotated_img = (rotated_img - globalMin)/ (globalMax-globalMin)
-        rotated_img = rotated_img.astype(np.float64)  # normalize the data to 0 - 1
-        rotated_img = 255 * rotated_img # Now scale by 255
-        img = rotated_img.astype(np.uint8)
+    for frame in range(data_ai.shape[-1]):
         
-        f,ax = plt.subplots(1,1)
-        ax.imshow(fixed_frame)
-        ax.imshow(img, alpha=0.5)
-        plt.tight_layout()
-        plt.close(f)
+        slice_std = ndimage.rotate(data_std[:,:,int(sliceNr),frame],90)
+        slice_ai = ndimage.rotate(data_ai[:,:,int(sliceNr),frame],90)
+        
+        f,ax = plt.subplots(1,2)
+        f.set_facecolor((0, 0, 0))
+        
+        #ax[0].imshow(fixed_frame_std, cmap='Greys_r')
+        ax[0].imshow(slice_std, cmap='Greys_r')
+        ax[0].grid(False)
+        ax[0].axis('off')
+        #ax[1].imshow(fixed_frame_ai, cmap='Greys_r')
+        ax[1].imshow(slice_ai, cmap='Greys_r')
+        ax[1].grid(False)
+        ax[1].axis('off')
+               
+        
         plt.savefig(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)))
+        plt.close('all')
+        #time.sleep(0.3)
     
         #imageio.imwrite(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)), img)
     
@@ -328,7 +316,7 @@ def moco_movie(dataArr, sub_name, outdir):
     
     # imageio.mimsave(os.path.join(PATH_IN, '{}_movie.gif'.format(FILE_IN)), images, duration = 1/10)
     
-    writer = imageio.get_writer(os.path.join(outdir, '{}_movie.mp4'.format(sub_name)), fps=20)
+    writer = imageio.get_writer(os.path.join(outdir, '{}_movie.mp4'.format(sub_name)), fps=10)
     # Increase the fps to 24 or 30 or 60
     
     for file in files:

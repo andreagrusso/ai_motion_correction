@@ -264,30 +264,30 @@ plt.title('Diff from forward affine')
 
 
 
-df_motion = pd.DataFrame(np.vstack((motion_params,fw_ants_motion)),
-                         columns=['X trans', 'Y trans', 'Z trans',
-                                  'X rot', 'Y rot', 'Z rot'])
-df_motion['Algorithm'] = ['AI' for i in range(len(motion_params))]+['ANTs' for i in range(len(motion_params))]
-df_motion['Vol'] = list(np.arange(0, len(motion_params))) + list(np.arange(0, len(motion_params)))
+# df_motion = pd.DataFrame(np.vstack((motion_params,fw_ants_motion)),
+#                          columns=['X trans', 'Y trans', 'Z trans',
+#                                   'X rot', 'Y rot', 'Z rot'])
+# df_motion['Algorithm'] = ['AI' for i in range(len(motion_params))]+['ANTs' for i in range(len(motion_params))]
+# df_motion['Vol'] = list(np.arange(0, len(motion_params))) + list(np.arange(0, len(motion_params)))
 
 
-f, ax = plt.subplots(2,3, figsize=(15,10))
-sns.set_theme(style="darkgrid")
+# f, ax = plt.subplots(2,3, figsize=(15,10))
+# sns.set_theme(style="darkgrid")
 
-col =0
-for i in range(2):
-    for j in range(3):
+# col =0
+# for i in range(2):
+#     for j in range(3):
         
-        th = np.max(np.abs(df_motion[df_motion.columns[col]]))
+#         th = np.max(np.abs(df_motion[df_motion.columns[col]]))
         
-        sns.lineplot(data = df_motion, 
-                     x='Vol',y=df_motion.columns[col], 
-                     hue='Algorithm',
-                     ax = ax[i,j])
-        ax[i,j].set(ylim=(-th-0.01,th+0.01))
-        plt.title(df_motion.columns[col])
-        col +=1
-plt.tight_layout()
+#         sns.lineplot(data = df_motion, 
+#                      x='Vol',y=df_motion.columns[col], 
+#                      hue='Algorithm',
+#                      ax = ax[i,j])
+#         ax[i,j].set(ylim=(-th-0.01,th+0.01))
+#         plt.title(df_motion.columns[col])
+#         col +=1
+# plt.tight_layout()
 #plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
 
 #%% MoCo movie
@@ -299,9 +299,12 @@ plt.tight_layout()
 
 
 aligned_4D = np.array(aligned_4D)
-aligned_4D = np.moveaxis(aligned_4D,[0,1,2,3],[3,0,1,2])
+aligned_4D = np.transpose(aligned_4D, (1, 2, 3, 0))
+#aligned_4D = np.moveaxis(aligned_4D,[0,1,2,3],[1,2,3,0])
 
 pre_nii_data = nb.load(pre_nii[0]).get_fdata()
 
-moco_movie(np.array(aligned_4D), sub+'_post', outdir)
-moco_movie(pre_nii_data, sub+'_pre', outdir)
+data4movie = [np.array(aligned_4D), pre_nii_data]
+output_name = sub+'pre_and_post'
+
+moco_movie(data4movie, output_name, outdir)
