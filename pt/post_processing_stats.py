@@ -15,18 +15,18 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import nibabel as nb
-#import hiddenlayer as hl
+import itertools
 
 
 from network import AffineNet
 from generators import Create_dataset
-from util_functions import output_processing, moco_movie, ants_moco
+from util_functions import output_processing, moco_movie, ants_moco, compare_affine_params
 
 #%% Data
 
 datadir = '/home/ubuntu22/Desktop/ai_mc'
-model_dir = 'affine_bs1_20ep_v02'
-sub = 'sub00_run1'
+model_dir = 'affine_bs1_dp03_ep20'
+sub = 'sub10_run7'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'ai')
 
 
@@ -47,7 +47,7 @@ testing_set = Create_dataset(testing_files, (128,128,128))
 testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
 
 motion_params = np.empty((len(testing_set), 6))
-aligned_data = []
+#aligned_data = []
 mse = []
 i=0
 timing = []
@@ -56,22 +56,25 @@ diff_vol_pre = []
 diff_vol_post = []
 
 aligned_4D = []
+all_affine = []
 
 
 for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just testing
+
     start = time.time()
     outputs = model(fixed_test['data'].type(torch.FloatTensor).to(device),
                     movable_test['data'].type(torch.FloatTensor).to(device))
     
-    crop_vol, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
+    crop_vol, curr_affine, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
                                                          movable_test['data'],
                                                          outputs, 
                                                          orig_dim,
                                                          world_affine)
     aligned_4D.append(crop_vol)
+    all_affine.append(curr_affine)
     
     timing.append(time.time()-start)
-    aligned_data.append(crop_vol)
+    #aligned_data.append(crop_vol)
     motion_params[i,:] = curr_motion
     mse += [mse_pre] + [mse_post]
     
@@ -199,18 +202,102 @@ plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
 
 #%% get ANTS affine and compare
 
-
+all_affine = np.array(all_affine)
+all_affine = np.moveaxis(all_affine, [0,1,2],[2,0,1])
 
 pre_nii = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'*nii'))
 
-bwd_affine, fwd_affine = ants_moco(pre_nii[0], outdir)
+bwd_affine, fwd_affine, fw_ants_motion, bw_ants_motion = ants_moco(pre_nii[0], outdir)
+
+diff_bwd_affine = np.zeros_like(bwd_affine)
+diff_fwd_affine = np.zeros_like(fwd_affine)
+
+
+for i in range(all_affine.shape[-1]):
+    
+    affine1 = all_affine[...,i]
+    
+    #comparison with backward
+    affine2 = bwd_affine[...,i]
+    diff_bwd_affine[...,i] = compare_affine_params(affine1, affine2)
+    
+    #comparison with forward
+    affine2 = fwd_affine[...,i]
+    diff_fwd_affine[...,i] = compare_affine_params(affine1, affine2)
+
+
+
+diff_fwd_affine = np.reshape(diff_fwd_affine, (diff_fwd_affine.shape[0]*diff_fwd_affine.shape[1],
+                                               diff_fwd_affine.shape[2])).T
+
+diff_bwd_affine = np.reshape(diff_bwd_affine, (diff_bwd_affine.shape[0]*diff_bwd_affine.shape[1],
+                                               diff_bwd_affine.shape[2])).T
+
+
+#index couple for plottin
+indices = np.indices((3,4))
+indices = np.reshape(indices,(2,12)).T
+
+
+
+f,ax = plt.subplots(3,4)
+max_val = np.max(abs(diff_bwd_affine))
+for j,idx in enumerate(indices):
+    ax[idx[0],idx[1]].plot(diff_bwd_affine[:,j])
+    ax[idx[0],idx[1]].set_title('A' + str(idx) +' diff')
+    ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
+    plt.tight_layout()
+
+plt.title('Diff from backward affine')
+
+
+
+f,ax = plt.subplots(3,4)
+max_val = np.max(abs(diff_fwd_affine))
+for j,idx in enumerate(indices):
+    ax[idx[0],idx[1]].plot(diff_fwd_affine[:,j])
+    ax[idx[0],idx[1]].set_title('A' + str(idx) +' diff')
+    ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
+    plt.tight_layout()
+
+plt.title('Diff from forward affine')
 
 
 
 
+df_motion = pd.DataFrame(np.vstack((motion_params,fw_ants_motion)),
+                         columns=['X trans', 'Y trans', 'Z trans',
+                                  'X rot', 'Y rot', 'Z rot'])
+df_motion['Algorithm'] = ['AI' for i in range(len(motion_params))]+['ANTs' for i in range(len(motion_params))]
+df_motion['Vol'] = list(np.arange(0, len(motion_params))) + list(np.arange(0, len(motion_params)))
 
+
+f, ax = plt.subplots(2,3, figsize=(15,10))
+sns.set_theme(style="darkgrid")
+
+col =0
+for i in range(2):
+    for j in range(3):
+        
+        th = np.max(np.abs(df_motion[df_motion.columns[col]]))
+        
+        sns.lineplot(data = df_motion, 
+                     x='Vol',y=df_motion.columns[col], 
+                     hue='Algorithm',
+                     ax = ax[i,j])
+        ax[i,j].set(ylim=(-th-0.01,th+0.01))
+        plt.title(df_motion.columns[col])
+        col +=1
+plt.tight_layout()
+#plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
 
 #%% MoCo movie
+
+
+
+
+
+
 
 aligned_4D = np.array(aligned_4D)
 aligned_4D = np.moveaxis(aligned_4D,[0,1,2,3],[3,0,1,2])

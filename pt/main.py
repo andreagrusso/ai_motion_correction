@@ -24,9 +24,12 @@ from online_create_pairs import create_pairs, create_pairs_for_testing
 # from dicom2nifti.convert_dicom import dicom_array_to_nifti
 # import pydicom
 #%% Data import
-datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
-outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+# datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
+# outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
+
+datadir = '/home/ubuntu22/Desktop/ai_mc/'
+outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 #%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer

@@ -10,7 +10,7 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 """
 
 import numpy as np
-import os, torch, math, imageio, glob
+import os, torch, math, imageio, glob, shutil
 import torchio as tio
 from losses import Dice
 import nibabel as nb
@@ -203,7 +203,7 @@ def output_processing(fixed,movable,outputs,orig_dim, world_affine):
     dice_pre = mse_fn(fixed,movable)#dice_fn.loss(fixed,movable)
     dice_pre = dice_pre.cpu().detach().numpy()
 
-    return crop_vol, motion_params, dice_post, dice_pre
+    return crop_vol, matrix, motion_params, dice_post, dice_pre
 
     
     
@@ -346,10 +346,22 @@ def params2mat(params):
     #translation
     mat[:-1,-1] = params[9:]
     mat[:-1,:-1] = np.reshape(params[:9],(3,3))
+    #get a 3x4 matrix
+    mat = mat[:-1,:]
     
     return mat
 
+def ants_motion(params):
+    
+    dx, dy, dz = params[9:]
 
+    rot_x = np.arcsin(params[6])
+    cos_rot_x = np.cos(rot_x)
+    rot_y = np.arctan2(params[7] / cos_rot_x, params[8] / cos_rot_x)
+    rot_z = np.arctan2(params[3] / cos_rot_x, params[0] / cos_rot_x)
+    
+    return np.array([dx, dy, dz, 
+                     np.degrees(rot_x), np.degrees(rot_y), np.degrees(rot_z)]) 
 
 
 
@@ -370,8 +382,8 @@ def ants_moco(datafile, outdir):
 
     Returns
     -------
-    Aligned data
-    array of affine matrices
+    
+    arrays of affine matrices
 
     """
     
@@ -401,9 +413,12 @@ def ants_moco(datafile, outdir):
     #prepare output data
     aligned_data = np.zeros_like(data)
     #backward matrices
-    bwd_matrices = np.zeros((4,4,data.shape[-1]))
+    bwd_matrices = np.zeros((3,4,data.shape[-1]))
     #forward matrices
-    fwd_matrices = np.zeros((4,4,data.shape[-1]))    
+    fwd_matrices = np.zeros((3,4,data.shape[-1]))   
+    
+    bw_motion = np.empty((6, data.shape[-1]))
+    fw_motion = np.empty((6, data.shape[-1]))
 
     for idx_vol in range(data.shape[-1]):
         print('Volume {}'.format(idx_vol))
@@ -418,10 +433,14 @@ def ants_moco(datafile, outdir):
         print('...Find trasformation matrix for {}, vol {}'.format(basename, idx_vol))
         mytx = ants.registration(fixed=fixed, moving=moving, type_of_transform = 'Rigid')
         print('...Save transformation matrix')
+        os.system(f"cp {mytx['fwdtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
         bwd_params = ants.read_transform(mytx['invtransforms'][0]).parameters
+        bw_motion[...,idx_vol] = ants_motion(bwd_params)
+        
         bwd_matrices[...,idx_vol] = params2mat(bwd_params)
         fwd_params = ants.read_transform(mytx['fwdtransforms'][0]).parameters
         fwd_matrices[...,idx_vol] = params2mat(fwd_params)
+        bw_motion[...,idx_vol] = ants_motion(fwd_params)
 
     
         # // Apply transformation
@@ -438,11 +457,15 @@ def ants_moco(datafile, outdir):
     new_nii.to_filename(os.path.join(outdir,'{}_ants_warped.nii.gz'.format(basename)))
     print('ANTs aligned nifti saved!')
     print('... Removing temporary directory')
-    os.remove(tmp_dir)
+    shutil.rmtree(tmp_dir)
     
     
         
-    return fwd_matrices
+    return bwd_matrices, fwd_matrices, fw_motion, bw_motion
     
     
     
+    
+def compare_affine_params(affine1, affine2):
+    
+    return(affine1-affine2)
