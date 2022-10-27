@@ -44,13 +44,13 @@ def mosaic_to_mat(dcm_file):
     #nii = dicom_array_to_nifti(dicom_header,outfile,reorient_nifti=True)
     nii = dicom_array_to_nifti(dicom_header,outfile)
     
-    mat = nii['NII'].get_fdata()
-    world_affine = nii['NII'].affine
+    #mat = nii['NII'].get_fdata()
+    # world_affine = nii['NII'].affine
     
-    if os.path.isfile(nii['NII_FILE']):
-        os.remove(nii['NII_FILE'])
+    # if os.path.isfile(nii['NII_FILE']):
+    #     os.remove(nii['NII_FILE'])
     
-    return mat, world_affine
+    return nii['NII_FILE']
     
     
 

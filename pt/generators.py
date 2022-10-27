@@ -8,16 +8,11 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 @email: andreagerardo.russo@unicampania.it
 
 """
-import torch 
+import torch,os 
 import torchio as tio
 
-import numpy as np
-import pydicom
-
 from util_functions import mosaic_to_mat
-import numpy as np
 
-from sklearn.preprocessing import MinMaxScaler
 
 
 #%%
@@ -58,49 +53,35 @@ class Create_dataset(torch.utils.data.Dataset):
         pair = self.pairs[ID]
       
 
-        trg_mat, world_affine = mosaic_to_mat(pair[1])#.astype('float32')
-        mov_mat, world_affine = mosaic_to_mat(pair[0])#.astype('float32')
-        #the two world affine should be the same (given that the two images have same dimensions)
+        trg_mat = mosaic_to_mat(pair[1])
+        mov_mat = mosaic_to_mat(pair[0])
+        #the affine is stored in the tensor!!!!
         
-        orig_dim = mov_mat.shape
-        
-        #get padding
-        desidered_input_dims = [128.0, 128.0, 128.0, 128.0, 128.0, 128.0]
-        axis_diff = (np.array(desidered_input_dims)-np.array(2*orig_dim))/2
-        pads=[tuple([int(np.ceil(axis_diff[i])),int(np.floor(axis_diff[i+3]))])
-                  for i in range(3)]
-        #zeropadding in numpy to preserve center of the 128**3 bounding box
-        trg_mat = np.pad(trg_mat,pad_width=pads)
-        mov_mat = np.pad(mov_mat,pad_width=pads)
-        
-        
-        trg_mat = np.expand_dims(trg_mat, axis=0)
-        mov_mat = np.expand_dims(mov_mat, axis=0)
-        
-        
-        
-        #try to use torchio for preprocessing
+        #create tensor 
         mov_tensor = tio.ScalarImage(tensor=mov_mat)
         trg_tensor = tio.ScalarImage(tensor=trg_mat)
         
-        #Min Max scaling (non zero voxels)
-        scaler = tio.transforms.RescaleIntensity(out_min_max=(0, 1),
-                                                 masking_method=lambda x: x > 0)
-        scaled_mov = scaler(mov_tensor)
-        scaled_trg = scaler(trg_tensor)
+        #store the original matrix size
+        orig_dim = mov_tensor.shape[1:]       
+
+        #compose transformation
+        transform = tio.Compose([
+            tio.transforms.ToCanonical(), #bring the image in RAS+
+            tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
+            tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking
+            tio.transforms.CropOrPad((128,128,128)) #padding
+        ])
         
-        #masking
-        #the threshld is the median. It looks high but it works
-        mask = tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.90))
-        m_scaled_mov = mask(scaled_mov)
-        m_scaled_trg = mask(scaled_trg)
         
-        #padding
-        # padding = tio.transforms.CropOrPad((128,128,128))
-        # zeropad_mov = padding(m_scaled_mov)
-        # zeropad_trg = padding(m_scaled_trg)
-            
-        return m_scaled_trg, m_scaled_mov, orig_dim, world_affine
+        mov_tensor = transform(mov_tensor)
+        trg_tensor = transform(trg_tensor)
+
+    
+        #remove nifti file from disk  
+        os.remove(trg_mat)
+        os.remove(mov_mat)
+        
+        return trg_tensor, mov_tensor, orig_dim
 
 
 
@@ -141,54 +122,48 @@ class Create_test_dataset(torch.utils.data.Dataset):
         # Load data and get label
         pair = self.pairs[ID]
         
+        trg_mat = mosaic_to_mat(pair[1])
+        mov_mat = mosaic_to_mat(pair[0])
+        #the affine is stored in the tensor!!!!
         
-        trg_mat, world_affine = mosaic_to_mat(pair[1])#.astype('float32')
-        mov_mat, world_affine = mosaic_to_mat(pair[0])#.astype('float32')
-        orig_dim = mov_mat.shape
-        
-        #get padding
-        desidered_input_dims = [128.0, 128.0, 128.0, 128.0, 128.0, 128.0]
-        axis_diff = (np.array(desidered_input_dims)-np.array(2*orig_dim))/2
-        pads=[tuple([int(np.ceil(axis_diff[i])),int(np.floor(axis_diff[i+3]))])
-                  for i in range(3)]
-        #zeropadding in numpy to preserve center of the 128**3 bounding box
-        trg_mat = np.pad(trg_mat,pad_width=pads)
-        mov_mat = np.pad(mov_mat,pad_width=pads)
-        
-        
-        trg_mat = np.expand_dims(trg_mat, axis=0)
-        mov_mat = np.expand_dims(mov_mat, axis=0)
-        
-        #try to use torchio for preprocessing
+        #create tensor 
         mov_tensor = tio.ScalarImage(tensor=mov_mat)
         trg_tensor = tio.ScalarImage(tensor=trg_mat)
         
-        #Min Max scaling (non zero voxels)
-        scaler = tio.transforms.RescaleIntensity(out_min_max=(0, 1),
-                                                 masking_method=lambda x: x > 0)
-        scaled_mov = scaler(mov_tensor)
-        scaled_trg = scaler(trg_tensor)
-        
-        
-                
-        # #ranfdom affine only for movable
-        affine_aug = tio.transforms.RandomAffine(scales=0,
-                                            degrees=[0,0,0],#sampling between -2,2
-                                            translation=[1,3,5],#sampling between -2,2
-                                            image_interpolation='bspline',
-                                            center='origin')
-            
-        scaled_mov = affine_aug(scaled_mov)
-        
-        
-        mask = tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.90))
-        m_scaled_mov = mask(scaled_mov)
-        m_scaled_trg = mask(scaled_trg)
-        
+        #store the original matrix size
+        orig_dim = mov_tensor.shape[1:]       
 
-
+        #compose transformation
+        transform_trg = tio.Compose([
+            tio.transforms.ToCanonical(), #bring the image in RAS+
+            tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
+            tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking
+            tio.transforms.CropOrPad((128,128,128)) #padding
+        ])
+        transform_mov = tio.Compose([
+            tio.transforms.ToCanonical(), #bring the image in RAS+
+            tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
+            tio.transforms.RandomAffine(scales=0,
+                                                degrees=[0,0,0],#sampling between -2,2
+                                                translation=[1,3,5],#sampling between -2,2
+                                                image_interpolation='bspline',
+                                                center='origin'),
+            tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking
+            tio.transforms.CropOrPad((128,128,128)) #padding
+        ])
         
-        return  m_scaled_trg, m_scaled_mov, orig_dim
+        
+        
+        mov_tensor = transform_mov(mov_tensor)
+        trg_tensor = transform_trg(trg_tensor)
+
+    
+        #remove nifti file from disk  
+        os.remove(trg_mat)
+        os.remove(mov_mat)        
+
+       
+        return trg_tensor, mov_tensor, orig_dim
         
 
 
