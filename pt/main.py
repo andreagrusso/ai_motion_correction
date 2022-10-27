@@ -101,7 +101,7 @@ for epoch in range(max_epochs):
         
     #training 
     running_loss = 0.0
-    for fixed, movable, orig_dim, nii_affine in training_generator:
+    for fixed, movable, orig_dim in training_generator:
         
         
         # zero the parameter gradients
@@ -135,7 +135,7 @@ for epoch in range(max_epochs):
 
     ###############VALIDATION#############################
     running_loss = 0.0
-    for fixed_val, movable_val, orig_dim, nii_affine in validation_generator:  
+    for fixed_val, movable_val, orig_dim in validation_generator:  
         
 
         
