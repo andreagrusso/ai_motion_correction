@@ -29,7 +29,7 @@ from online_create_pairs import create_pairs, create_pairs_for_testing
 
 
 datadir = '/home/ubuntu22/Desktop/ai_mc/'
-outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affine_bs1_dp03_ep20'
 #%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
@@ -51,7 +51,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 4,
 
 #%% Set some variables
 
-max_epochs = 10
+max_epochs = 20
 batch = 1
 
 training_image_loss = dict()

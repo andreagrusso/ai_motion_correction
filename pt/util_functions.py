@@ -12,7 +12,7 @@ University of Campania "Luigi Vanvitelli", Naples, Italy
 import numpy as np
 import os, torch, math, imageio, glob, shutil
 import torchio as tio
-from losses import Dice
+import matplotlib.pyplot as plt
 import nibabel as nb
 from scipy import ndimage
 import ants
@@ -116,9 +116,11 @@ def output_processing(fixed,movable,outputs,orig_dim):
     
     #################### CROPPING #############################################
     #crop the movable first to get the proper world affine
-    cropping = tio.transforms.CropOrPad(tuple(orig_dim))
+    orig_dim = [val.detach().numpy()[0] for val in orig_dim]
+    cropping = tio.transforms.CropOrPad(tuple(orig_dim),include='data')
+    movable['data'] = torch.squeeze(movable['data'],0)
     orig_movable = cropping(movable)
-    world_affine = orig_movable.affine #numpy array float
+    world_affine = np.squeeze(orig_movable['affine'].cpu().detach().numpy())#numpy array float
     
     #crop the output vol
     crop_vol = cropping(tio.ScalarImage(tensor=torch.squeeze(outputs[0],0)))
@@ -134,7 +136,7 @@ def output_processing(fixed,movable,outputs,orig_dim):
 
 
     
-    # orig_dim = [val.detach().numpy()[0] for val in orig_dim]
+    # 
     
     
     ################### MOTION PARAMETERS #####################################
@@ -270,6 +272,8 @@ def moco_movie(dataArr, sub_name, outdir):
     globalMax = 0
     globalMin = 0
     
+
+    
     for frame in range(dataArr.shape[3]):
         imgData = dataArr[:,:,int(sliceNr),frame]
         rotated_img = ndimage.rotate(imgData, 90)
@@ -279,7 +283,19 @@ def moco_movie(dataArr, sub_name, outdir):
         if np.amax(rotated_img) >= globalMax:
             globalMax = np.amax(rotated_img)
             # // change the maxium with 75 percentile
+
+
+
+    ########### Process the first volume #####################################
+    fixed_frame =  ndimage.rotate(dataArr[:,:,int(sliceNr),0],90)  
+    fixed_frame[0,0] = globalMax
+    fixed_frame[0,1] = globalMin
     
+    fixed_frame = (fixed_frame - globalMin)/ (globalMax-globalMin)
+    fixed_frame = fixed_frame.astype(np.float64)  # normalize the data to 0 - 1
+    fixed_frame = 255 * fixed_frame # Now scale by 255
+
+############# LOOP FOR ALL OTHER VOLUMES ######################################    
     for frame in range(dataArr.shape[3]):
         imgData = dataArr[:,:,int(sliceNr),frame]
         rotated_img = ndimage.rotate(imgData, 90)
@@ -292,8 +308,15 @@ def moco_movie(dataArr, sub_name, outdir):
         rotated_img = rotated_img.astype(np.float64)  # normalize the data to 0 - 1
         rotated_img = 255 * rotated_img # Now scale by 255
         img = rotated_img.astype(np.uint8)
+        
+        f,ax = plt.subplots(1,1)
+        ax.imshow(fixed_frame)
+        ax.imshow(img, alpha=0.5)
+        plt.tight_layout()
+        plt.close(f)
+        plt.savefig(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)))
     
-        imageio.imwrite(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)), img)
+        #imageio.imwrite(os.path.join('{}'.format(dumpFolder), 'frame{}.png'.format(frame)), img)
     
     
     files = sorted(glob.glob(os.path.join(outdir,'moco_movie','*.png')))

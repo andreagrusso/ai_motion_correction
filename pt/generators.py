@@ -58,8 +58,8 @@ class Create_dataset(torch.utils.data.Dataset):
         #the affine is stored in the tensor!!!!
         
         #create tensor 
-        mov_tensor = tio.ScalarImage(tensor=mov_mat)
-        trg_tensor = tio.ScalarImage(tensor=trg_mat)
+        mov_tensor = tio.ScalarImage(mov_mat)
+        trg_tensor = tio.ScalarImage(trg_mat)
         
         #store the original matrix size
         orig_dim = mov_tensor.shape[1:]       
@@ -77,9 +77,12 @@ class Create_dataset(torch.utils.data.Dataset):
         trg_tensor = transform(trg_tensor)
 
     
-        #remove nifti file from disk  
-        os.remove(trg_mat)
-        os.remove(mov_mat)
+        #remove nifti file from disk
+        if trg_mat == mov_mat:
+            os.remove(trg_mat)
+        else:        
+            os.remove(trg_mat)
+            os.remove(mov_mat)
         
         return trg_tensor, mov_tensor, orig_dim
 

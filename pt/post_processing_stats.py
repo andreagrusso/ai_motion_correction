@@ -107,7 +107,7 @@ f=sns.lineplot(data = loss_df,
              hue='Section')
 f.set_xticks(range(20))
 plt.tight_layout()
-plt.savefig(os.path.join(datadir,'preliminary_nn_results',model_dir,'model_losses.svg'), dpi=300)
+#plt.savefig(os.path.join(datadir,'preliminary_nn_results',model_dir,'model_losses.svg'), dpi=300)
 
 #%% Subject's metric
 
@@ -127,7 +127,7 @@ sns.lineplot(data = mse_df,
 ax[1].plot(timing)
 #f.set_xticks(range(len(pre_mse_sub00)))
 plt.tight_layout()
-plt.savefig(os.path.join(outdir,sub+'_mse_and_time.svg'), dpi=300)
+#plt.savefig(os.path.join(outdir,sub+'_mse_and_time.svg'), dpi=300)
 
 #%%
 spm_motion_file = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'spm','rp*.txt'))
@@ -158,7 +158,7 @@ for i in range(2):
         plt.title(df_motion.columns[col])
         col +=1
 plt.tight_layout()
-plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
+#plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
 
 
 #%% plot vol difference
@@ -197,7 +197,7 @@ for idx, vol in enumerate(index_plot):
     plt.tight_layout()
     plt.suptitle('Difference between movable and fixed voulumes before and after alignment')
     
-plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
+#plt.savefig(os.path.join(outdir,sub+'_volume_differences.svg'), dpi=300)
 
 #%% get ANTS affine and compare
 
