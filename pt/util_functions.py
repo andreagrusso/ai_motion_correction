@@ -26,29 +26,17 @@ def mosaic_to_mat(dcm_file):
     """ Snippets taken from https://dicom2nifti.readthedocs.io/ and arranged for
     our needs.
     """
-
-
-    
-    
+  
     dicom_header = []
     dicom_header.append(pydicom.read_file(dcm_file,
                                  defer_size=None,
                                  stop_before_pixels=False,
                                  force=False))
-    
-    
-      
+        
     outfile = dcm_file[:-3]+'nii'
         
-    
-    #nii = dicom_array_to_nifti(dicom_header,outfile,reorient_nifti=True)
     nii = dicom_array_to_nifti(dicom_header,outfile)
-    
-    #mat = nii['NII'].get_fdata()
-    # world_affine = nii['NII'].affine
-    
-    # if os.path.isfile(nii['NII_FILE']):
-    #     os.remove(nii['NII_FILE'])
+
     
     return nii['NII_FILE']
     
@@ -119,50 +107,45 @@ def mat_to_mosaic(mosaic_dcm, data_matrix, outdir, idx_dcm, name):
     
     
 
-def output_processing(fixed,movable,outputs,orig_dim, world_affine):
+def output_processing(fixed,movable,outputs,orig_dim):
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")    
-    dice_fn = Dice()
-    mse_fn = torch.nn.MSELoss()
     
     data_tensor = outputs[0]
     matrix = np.squeeze(outputs[1].cpu().detach().numpy())
-    world_affine = np.squeeze(world_affine.cpu().detach().numpy())
+    
+    #################### CROPPING #############################################
+    #crop the movable first to get the proper world affine
+    cropping = tio.transforms.CropOrPad(tuple(orig_dim))
+    orig_movable = cropping(movable)
+    world_affine = orig_movable.affine #numpy array float
+    
+    #crop the output vol
+    crop_vol = cropping(tio.ScalarImage(tensor=torch.squeeze(outputs[0],0)))
+    crop_vol = np.squeeze(crop_vol['data'].cpu().detach().numpy())
+
    
-    
-    matrix = ThetaToM(matrix, 128, 128, 128)
-    #matrix = matrix[:-1,:]
-    
-    #trasnform to world coordinates
+    ################### AFFINE CONVERSION #####################################
+    #from norm coords to vox coords
+    matrix = ThetaToM(matrix, 128, 128, 128)  
+    #from vox coords to world RAS+ coords
     matrix =  np.linalg.inv(world_affine) @ np.linalg.inv(matrix) @ world_affine
     matrix = matrix[:-1,:]
 
-    #rot_params = outputs[1].cpu().detach().numpy()
-    #trans_params = outputs[2].cpu().detach().numpy()
+
     
-    orig_dim = [val.detach().numpy()[0] for val in orig_dim]
+    # orig_dim = [val.detach().numpy()[0] for val in orig_dim]
     
+    
+    ################### MOTION PARAMETERS #####################################
     motion_params = np.empty((1,6))
-    
-    
-    #return volume to original dimension
-    tensor = tio.ScalarImage(tensor=torch.squeeze(data_tensor,0))
-    padding = tio.transforms.CropOrPad(tuple(orig_dim))
-    crop_vol = padding(tensor)
-    crop_vol = np.squeeze(crop_vol['data'].cpu().detach().numpy())
-    
-    #vec = np.zeros((1,4))
-    #vec[-1] = 1
-    #matrix = np.linalg.inv(np.vstack((matrix,vec)))
-    #matrix = matrix[:-1,:]
-    #motion parameters
-    #motion_params[0,:3] = trans_params.reshape(1,-1)
+
+    #translation parameters    
     motion_params[0,:3] = matrix[:,-1].reshape(1,-1)
 
     
     #rotation params (hopefully in radians)
     #source Rigid Body Registration John Ashburner & Karl J. Friston
-    #rot_mat = rot_params.reshape(3,3)+np.eye(3)
     rot_mat = matrix[:,:-1]
     q5 = np.arcsin(rot_mat[0,2]) #q5
     motion_params[0,4] = np.rad2deg(q5)
@@ -188,22 +171,19 @@ def output_processing(fixed,movable,outputs,orig_dim, world_affine):
         motion_params[0,5] = np.rad2deg(q6)
     
     
-    #estimate the dice coefficient with the target
-    fixed = fixed.to(device)
-    #print(fixed.device)
-    data_tensor = data_tensor.to(device)
-    #print(data_tensor.device)
+    ########################Pre and Post MSE################################## 
+    mse_fn = torch.nn.MSELoss()
+    
+    fixed = fixed['data'].to(device)
+    data_tensor = outputs[0].to(device)
     movable = movable.to(device)
-    #print(movable.device)
     
-    dice_post = mse_fn(fixed,data_tensor)#dice_fn.loss(fixed,data_tensor)
-    dice_post = dice_post.cpu().detach().numpy()
-    
+    #dice with the aligned data
+    dice_post = mse_fn(fixed,data_tensor)    
     #dice index with the original data
     dice_pre = mse_fn(fixed,movable)#dice_fn.loss(fixed,movable)
-    dice_pre = dice_pre.cpu().detach().numpy()
-
-    return crop_vol, matrix, motion_params, dice_post, dice_pre
+    
+    return crop_vol, matrix, motion_params, dice_post.item(), dice_pre.item()
 
     
     

@@ -26,7 +26,7 @@ from util_functions import output_processing, moco_movie, ants_moco, compare_aff
 
 datadir = '/home/ubuntu22/Desktop/ai_mc'
 model_dir = 'affine_bs1_dp03_ep20'
-sub = 'sub10_run7'
+sub = 'sub00_run1'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'ai')
 
 
@@ -59,17 +59,16 @@ aligned_4D = []
 all_affine = []
 
 
-for fixed_test, movable_test, orig_dim, world_affine in testing_generator: #just testing
+for fixed_test, movable_test, orig_dim in testing_generator: #just testing
 
     start = time.time()
     outputs = model(fixed_test['data'].type(torch.FloatTensor).to(device),
                     movable_test['data'].type(torch.FloatTensor).to(device))
     
-    crop_vol, curr_affine, curr_motion, mse_post, mse_pre = output_processing(fixed_test['data'],
-                                                         movable_test['data'],
+    crop_vol, curr_affine, curr_motion, mse_post, mse_pre = output_processing(fixed_test,
+                                                         movable_test,
                                                          outputs, 
-                                                         orig_dim,
-                                                         world_affine)
+                                                         orig_dim)
     aligned_4D.append(crop_vol)
     all_affine.append(curr_affine)
     
