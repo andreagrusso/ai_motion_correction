@@ -62,16 +62,25 @@ class AffineNet(nn.Module):
         
         #### regression separetely on rotation and translation
         #dense layer for the rotation params
-      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9), nn.Tanh())#,nn.Tanh())# tanh activation?
+      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                       nn.Dropout(p=0.3),
+                                       nn.Linear(256,128),
+                                       nn.Dropout(p=0.3),
+                                       nn.Linear(128,9),
+                                      nn.Tanh())#,nn.Tanh())# tanh activation?
       #self.rot_params[0].weight.data.zero_()
-      self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
+      self.rot_params[-2].bias.data.copy_(torch.tensor([1, 0, 0, 
                                                          0, 1, 0,
                                                          0, 0, 1], dtype=torch.float))
         
         #dense layer for the translation params
-      self.trans_params = nn.Linear(512*1*1*1, 3)           
+      self.trans_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                       nn.Dropout(p=0.3),
+                                       nn.Linear(256,128),
+                                       nn.Dropout(p=0.3),
+                                       nn.Linear(128,3))           
       #self.trans_params.weight.data.zero_()
-      self.trans_params.bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
+      self.trans_params[-1].bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
 
 
 
