@@ -71,8 +71,8 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
     
         
         if matrix.size != 1:
-            #real matrix                  
-            movable = affine_transform(movable, matrix)
+            #real matrix (push/backward mapping)            
+            movable = affine_transform(movable, np.linalg.inv(matrix))
 
          
         fixed = np.expand_dims(fixed, 0)

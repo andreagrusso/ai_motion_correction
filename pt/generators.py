@@ -175,9 +175,11 @@ class Create_test_dataset(torch.utils.data.Dataset):
 
     
         #remove nifti file from disk  
-        os.remove(trg_mat)
-        os.remove(mov_mat)        
-
+        if trg_mat == mov_mat:
+            os.remove(trg_mat)
+        else:        
+            os.remove(trg_mat)
+            os.remove(mov_mat)
        
         return trg_tensor, mov_tensor, orig_dim
         

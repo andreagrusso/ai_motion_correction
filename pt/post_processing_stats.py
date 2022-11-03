@@ -26,9 +26,10 @@ from util_functions import output_processing, ants_moco, compare_affine_params, 
 
 #%% Data
 
-datadir = '/home/ubuntu22/Desktop/ai_mc'
+datadir = '/mnt/c/Users/NeuroIm/Documents/data/ai_motion_correction'
 model_dir = 'affine_bs1_Multidp03_ep20'
-sub = 'sub00_run1'
+sub = 'sub00'
+run = 'run1'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub,'ai')
 
 
@@ -44,7 +45,10 @@ model = model.to(device)
 
 #%% Run the model
 
-testing_files = pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
+dcms = glob.glob(os.path.join(datadir,'dcm','test', sub+'_'+run,'*.dcm' ))
+testing_files = [[tmp_dcm, dcms[0]] for tmp_dcm in dcms]
+
+#pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
 testing_set = Create_dataset(testing_files, (128,128,128))
 testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
 
@@ -62,6 +66,7 @@ ai_output_mse = np.empty((len(testing_set), 1))
 
 
 for fixed_test, movable_test, orig_dim in testing_generator: #just testing
+    print(i)
 
     start = time.time()
     outputs = model(fixed_test['data'].to(device),
@@ -134,11 +139,6 @@ for i in range(fwd_affine.shape[2]):
     ai_mse[i,:] = align_and_mse(raw_data[...,0], raw_data[...,i], 
                             all_affine[...,i], raw_data[...,0].shape)
     
-
-
-
-
-
 
 
 mse_df = pd.DataFrame([], columns=['MSE', 'Vol','Method'])
