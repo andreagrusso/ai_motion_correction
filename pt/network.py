@@ -63,24 +63,37 @@ class AffineNet(nn.Module):
         #### regression separetely on rotation and translation
         #dense layer for the rotation params
       self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
-                                       nn.Dropout(p=0.3),
-                                       nn.Linear(256,128),
-                                       nn.Dropout(p=0.3),
-                                       nn.Linear(128,9),
-                                      nn.Tanh())#,nn.Tanh())# tanh activation?
-      #self.rot_params[0].weight.data.zero_()
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,9),
+                                       nn.Tanh())#,nn.Tanh())# tanh activation?
+       #self.rot_params[0].weight.data.zero_()
       self.rot_params[-2].bias.data.copy_(torch.tensor([1, 0, 0, 
-                                                         0, 1, 0,
-                                                         0, 0, 1], dtype=torch.float))
+                                                          0, 1, 0,
+                                                          0, 0, 1], dtype=torch.float))
         
-        #dense layer for the translation params
+         #dense layer for the translation params
       self.trans_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
-                                       nn.Dropout(p=0.3),
-                                       nn.Linear(256,128),
-                                       nn.Dropout(p=0.3),
-                                       nn.Linear(128,3))           
-      #self.trans_params.weight.data.zero_()
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,3))           
+       #self.trans_params.weight.data.zero_()
       self.trans_params[-1].bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
+      
+      
+      # self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9),
+      #                                 nn.Tanh())#,nn.Tanh())# tanh activation?
+      # #self.rot_params[0].weight.data.zero_()
+      # self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
+      #                                                    0, 1, 0,
+      #                                                    0, 0, 1], dtype=torch.float))
+        
+      #   #dense layer for the translation params
+      # self.trans_params = nn.Linear(512*1*1*1, 3)           
+      # #self.trans_params.weight.data.zero_()
+      # self.trans_params.bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
 
 
 
@@ -230,50 +243,57 @@ class Unet_Stn(nn.Module):
         # self.trans_params = linear_layer(256, 3, 'linear', 0.3)
         
         self.localization = nn.Sequential(
-                nn.Conv3d(2, 4, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(4, 8, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(8, 16, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(16, 32, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(32, 64, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(64, 128, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True),
-                nn.Conv3d(128, 256, kernel_size=3, padding=1),
-                nn.MaxPool3d(2),
-                nn.LeakyReLU(True))
-                   
-        self.regression = nn.Sequential(nn.Linear(256,12))
-          
-          # Initialize the weights/bias with identity transformation
-        #self.regression[0].weight.data.zero_()
-        self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
-                                                         0, 1, 0, 0,
-                                                         0, 0, 1, 0], dtype=torch.float))
+              nn.Conv3d(2, 4, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(4, 8, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(8, 16, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(16, 32, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(64, 128, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(128, 256, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True),
+              nn.Conv3d(256, 512, kernel_size=3, stride=2, padding=1),
+              nn.LeakyReLU(True), 
+              nn.Dropout(p=0.3))
+      
+
+        #regression on 12 parameters
+      # self.regression = nn.Sequential(nn.Linear(512*1*1*1,12),
+      #                                       nn.Dropout(p=0.3))
+         
+      #           # Initialize the weights/bias with identity transformation
+      # self.regression[0].weight.data.zero_()
+      # self.regression[0].bias.data.copy_(torch.tensor([1, 0, 0, 0, 
+      #                                                            0, 1, 0, 0,
+      #                                                            0, 0, 1, 0], dtype=torch.float))
         
         
         #### regression separetely on rotation and translation
         #dense layer for the rotation params
-        self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 9)) #nn.Tanh activation?
-      #self.rot_params[0].weight.data.zero_()
-        self.rot_params[0].bias.data.copy_(torch.tensor([1, 0, 0, 
-                                                         0, 1, 0,
-                                                         0, 0, 1], dtype=torch.float))
+        self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,9),
+                                       nn.Tanh())#,nn.Tanh())# tanh activation?
+       #self.rot_params[0].weight.data.zero_()
+        self.rot_params[-2].bias.data.copy_(torch.tensor([1, 0, 0, 
+                                                          0, 1, 0,
+                                                          0, 0, 1], dtype=torch.float))
         
-        #dense layer for the translation params
-        self.trans_params = nn.Linear(512*1*1*1, 3)           
-      #self.trans_params.weight.data.zero_()
-        self.trans_params.bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))        
-        
+         #dense layer for the translation params
+        self.trans_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,3))           
+       #self.trans_params.weight.data.zero_()
+        self.trans_params[-1].bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))        
         
     def stn(self, x):
         
@@ -281,18 +301,18 @@ class Unet_Stn(nn.Module):
         
         xs = self.localization(unet_output)
         xs = xs.view(xs.shape[0],-1)
-        theta = self.regression(xs)
-        theta = theta.view(-1, 3, 4)
-        # rot_params = self.rot_params(xs)
-        # trans_params = self.trans_params(xs)
+        # theta = self.regression(xs)
+        # theta = theta.view(-1, 3, 4)
+        rot_params = self.rot_params(xs)
+        trans_params = self.trans_params(xs)
         
-        # rot_params = rot_params.view(-1,3,3)
-        # trans_params = trans_params.view(-1,1,3)
+        rot_params = rot_params.view(-1,3,3)
+        trans_params = trans_params.view(-1,1,3)
         
-        # theta = torch.zeros((1,3,4))
-        # theta[:,:,:-1] = rot_params
-        # theta[:,:,-1] = trans_params
-        # theta = theta.to(device)
+        theta = torch.zeros((1,3,4))
+        theta[:,:,:-1] = rot_params
+        theta[:,:,-1] = trans_params
+        theta = theta.to(device)
         
         #movable = x[:,1,:,:,:]
         #movable = torch.ex
