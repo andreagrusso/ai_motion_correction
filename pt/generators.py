@@ -18,7 +18,7 @@ from dicom_processing import mosaic_to_mat
 #%%
 
 
-class Create_dataset(torch.utils.data.Dataset):
+class Create_test_dataset(torch.utils.data.Dataset):
     
     """Generates data for Pytorch
     Sequence based data generator. Suitable for building data generator for training and prediction.
@@ -104,7 +104,7 @@ class Create_dataset(torch.utils.data.Dataset):
 
 
 
-class Create_test_dataset(torch.utils.data.Dataset):
+class Create_train_dataset(torch.utils.data.Dataset):
     
     """Generates data for Pytorch
     Sequence based data generator. Suitable for building data generator for training and prediction.
@@ -143,8 +143,8 @@ class Create_test_dataset(torch.utils.data.Dataset):
         #the affine is stored in the tensor!!!!
         
         #create tensor 
-        mov_tensor = tio.ScalarImage(tensor=mov_mat)
-        trg_tensor = tio.ScalarImage(tensor=trg_mat)
+        mov_tensor = tio.ScalarImage(mov_mat)
+        trg_tensor = tio.ScalarImage(trg_mat)
         
         #store the original matrix size
         orig_dim = mov_tensor.shape[1:]       
@@ -160,8 +160,8 @@ class Create_test_dataset(torch.utils.data.Dataset):
             tio.transforms.ToCanonical(), #bring the image in RAS+
             tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
             tio.transforms.RandomAffine(scales=0,
-                                                degrees=[0,0,0],#sampling between -2,2
-                                                translation=[1,3,5],#sampling between -2,2
+                                                degrees=[3,3,3],#sampling between -3,3
+                                                translation=[3,3,3],#sampling between -3,3
                                                 image_interpolation='bspline',
                                                 center='origin'),
             tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking

@@ -76,7 +76,8 @@ def convert_mat(matrix, world_affine):
     #from norm coords to vox coords
     matrix = ThetaToM(matrix, 128, 128, 128)  
     #from vox coords to world RAS+ coords
-    matrix =  np.linalg.inv(world_affine) @ np.linalg.inv(matrix) @ world_affine
+    # matrix =  np.linalg.inv(world_affine) @ np.linalg.inv(matrix) @ world_affine
+    matrix =  world_affine @ np.linalg.inv(matrix) @ np.linalg.inv(world_affine)
     matrix = matrix[:-1,:]
     
     return matrix

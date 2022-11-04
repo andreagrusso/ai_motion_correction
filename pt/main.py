@@ -17,7 +17,7 @@ import pandas as pd
  
 from network import AffineNet,Unet_Stn, ReSTN
 from losses import NCC, regularizer_rot_matrix
-from generators import Create_dataset, Create_test_dataset
+from generators import Create_train_dataset, Create_test_dataset
 from util_functions import output_processing
 from online_create_pairs import create_pairs, create_pairs_for_testing
 
@@ -29,7 +29,7 @@ from online_create_pairs import create_pairs, create_pairs_for_testing
 
 
 datadir = '/home/ubuntu22/Desktop/ai_mc/'
-outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affineunet_bs1_Multidp03_ep20'
+outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affine_bs1_Multidp03_ep20_aug'
 #%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
@@ -82,13 +82,13 @@ for epoch in range(max_epochs):
     print('New set of pairs!')
 
     
-    training_set = Create_dataset(training_files, 
+    training_set = Create_train_dataset(training_files, 
                                                  (128,128,128))    
     training_generator = torch.utils.data.DataLoader(training_set, 
                                                             batch_size = batch, 
                                                             shuffle=True)
     
-    validation_set = Create_dataset(validation_files, (128,128,128))
+    validation_set = Create_test_dataset(validation_files, (128,128,128))
     validation_generator = torch.utils.data.DataLoader(validation_set,
                                                        batch_size = batch, 
                                                        shuffle=True)

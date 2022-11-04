@@ -71,16 +71,18 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
     
         
         if matrix.size != 1:
-            #real matrix (push/backward mapping)            
+            #real matrix (push/backward mapping) 
+            matrix = np.vstack((matrix,np.array([0,0,0,1])))
             movable = affine_transform(movable, np.linalg.inv(matrix))
 
          
         fixed = np.expand_dims(fixed, 0)
         movable = np.expand_dims(movable, 0)    
-        fixed = tio.ScalarImage(tensor=fixed)
+        fixed = tio.ScalarImage(tensor = fixed)
         movable = tio.ScalarImage(tensor = movable) 
         
         transform = tio.Compose([
+            tio.transforms.ToCanonical(),
             tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
             tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking
             tio.transforms.CropOrPad((128,128,128)) #padding
@@ -111,7 +113,7 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
     
 def compare_affine_params(affine1, affine2):
     
-    return(abs(affine1-affine2))
+    return(abs(abs(affine1)-abs(affine2)))
 
 
 def params2mat(params):
@@ -133,10 +135,12 @@ def params2mat(params):
     
     mat2 = c @ np.linalg.inv(mat) @ np.linalg.inv(c)
 
-    mat2 = mat2*np.array([[1,  1, -1, -1],
-     [1,1,-1,-1],
-     [-1,-1, 1,  1],
-     [1, 1,1, 1]])
+    # mat2 = mat2*np.array([[1,  1, -1, -1],
+    #  [1,1,-1,-1],
+    #  [-1,-1, 1,  1],
+    #  [1, 1,1, 1]])
+    lps2ras = np.diag([-1,-1,1,1])
+    mat2 = lps2ras @ np.linalg.inv(mat2) @ np.linalg.inv(lps2ras) 
     
     return mat2[:-1,:]
 
@@ -227,6 +231,7 @@ def ants_moco(datafile, outdir):
         fwd_params = loadmat(os.path.join(outdir,'{}_vol_{}_affine.mat'.format(basename, idx_vol)))
         fwd_matrices[...,idx_vol] = params2mat(fwd_params)
 
+
         os.system(f"cp {mytx['invtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
         bwd_params = loadmat(os.path.join(outdir,'{}_vol_{}_affine.mat'.format(basename, idx_vol)))
         bwd_matrices[...,idx_vol] = params2mat(bwd_params)
@@ -255,7 +260,7 @@ def ants_moco(datafile, outdir):
     
     
         
-    return bwd_matrices, fwd_matrices, fw_motion, bw_motion
+    return bwd_matrices, fwd_matrices, fw_motion, bw_motion, aligned_data
     
     
     
