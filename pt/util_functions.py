@@ -13,7 +13,7 @@ import numpy as np
 import os, torch, shutil
 import torchio as tio
 import nibabel as nb
-import ants
+#import ants
 from nilearn.image import new_img_like 
 from scipy.io import loadmat
 from scipy.ndimage import affine_transform

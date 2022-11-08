@@ -164,6 +164,170 @@ class AffineNet(nn.Module):
         return padded_output, theta
 
 
+#%%
+#version of the affinenet with coordconv layers https://github.com/uber-research/CoordConv/blob/master/CoordConv.py
+#arXiv:1807.03247v2 [cs.CV] 3 Dec 2018
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+class AffineNetCoord(nn.Module):
+    
+    #this function will define the skeleton of the network
+    def __init__(self):
+      super(AffineNetCoord, self).__init__()
+      
+      
+      
+      
+        #### regression separetely on rotation and translation
+        #dense layer for the rotation params
+      self.rot_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,9),
+                                       nn.Tanh())#,nn.Tanh())# tanh activation?
+      self.rot_params[-2].bias.data.copy_(torch.tensor([1, 0, 0, 
+                                                          0, 1, 0,
+                                                          0, 0, 1], dtype=torch.float))
+        
+         #dense layer for the translation params
+      self.trans_params = nn.Sequential(nn.Linear(512*1*1*1, 256),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(256,128),
+                                        nn.Dropout(p=0.3),
+                                        nn.Linear(128,3))
+           
+      self.trans_params[-1].bias.data.copy_(torch.tensor([0, 0, 0], dtype=torch.float))
+      
+     
+    #each convolution will have 3 more channels in input
+    def localization_net(self,x):
+              
+        for i in np.arange(3,10):
+            #add channels with coordinates
+            x = self.add_coords(x)            
+            x = self.conv3d(x, x.shape[1], 2**i)
+            #8, 16, 32, 64, 128, 256, 512
+            
+             
+        #final dropout
+        dp = nn.Dropout(p=0.3)    
+       
+          
+        return dp(x)
+      
+    
+      
+    def conv3d(self,tensor, in_ch, out_ch, kernel_size=3, stride=2, padding=1):
+        
+      conv = nn.Sequential(
+                nn.Conv3d(in_ch, out_ch, kernel_size, stride, padding),
+                nn.LeakyReLU(True)).to(device)
+      
+      return conv(tensor)
+        
+    
+    #return a the input layer augmented with 3 channels represented normalized coords
+    def add_coords(self,input_tensor):
+        """ derived from https://github.com/uber-research/CoordConv/blob/master/CoordConv.py"""
+        
+        batch_size, ch_size, x_dim, y_dim, z_dim = input_tensor.shape
+        
+        #use meshgrid to generate the coordinates
+        x, y, z = torch.arange(0,x_dim),torch.arange(0,y_dim),torch.arange(0,z_dim)
+        xx_gd, yy_gd, zz_gd = torch.meshgrid(x,y,z, indexing='ij')
+        
+        #expand dimension (batch and channel) to enable concatenation
+        xx_gd = torch.unsqueeze(torch.unsqueeze(xx_gd, 0), 1)
+        yy_gd = torch.unsqueeze(torch.unsqueeze(yy_gd, 0), 1)
+        zz_gd = torch.unsqueeze(torch.unsqueeze(zz_gd, 0), 1)
+
+        #cast tensor type to float
+        xx_gd = xx_gd.type(torch.FloatTensor)
+        yy_gd = yy_gd.type(torch.FloatTensor)
+        zz_gd = zz_gd.type(torch.FloatTensor)
+        
+        #normalize coordinates in range [-1,1]
+        xx_gd_norm = (xx_gd/(x_dim - 1))**2 -1
+        yy_gd_norm = (yy_gd/(y_dim - 1))**2 -1
+        zz_gd_norm = (zz_gd/(z_dim - 1))**2 -1
+        
+        xx_gd_norm = xx_gd_norm.to(device)
+        yy_gd_norm = yy_gd_norm.to(device)
+        zz_gd_norm = zz_gd_norm.to(device)
+        
+        return torch.cat((input_tensor, xx_gd_norm, yy_gd_norm, zz_gd_norm), dim=1)
+        
+        
+        
+    
+    #transformation network
+    def stn(self, x):
+        
+        #learn the features
+        xs = self.localization_net(x)
+        xs = xs.view(xs.shape[0],-1)
+        
+        #rotation and translation parameters
+        rot_params = self.rot_params(xs).view(-1,3,3)
+        trans_params = self.trans_params(xs).view(-1,3,1)
+        #concat translation and rotation
+        theta = torch.cat((rot_params,trans_params),dim=-1)
+
+
+        
+        
+        if x.shape[0] > 1: #batch_size higher than 1
+        
+            #exapnd on channel dim to keep batch size
+            movable = torch.unsqueeze(x[:,1,:,:,:],1) 
+            
+            grid = torch.empty((x.shape[0],
+                                x.shape[2],
+                                x.shape[3],
+                                x.shape[4],
+                                3)).to(device) #affine gird creates 3 channels (3 axis)
+        
+            for i in range(x.shape[0]):
+                
+                single_theta = torch.unsqueeze(theta[i,:,:],0)#select one item at time
+                movable_size = (1, 1, x.shape[2], x.shape[3], x.shape[4])
+                
+                #get the single interpolation grid
+                grid[i,:,:,:,:] = F.affine_grid(single_theta, 
+                                                movable_size,
+                                                align_corners=False)
+                
+        else:         
+        
+            #exapnd on batch dim to keep correct shape
+            movable = torch.unsqueeze(x[:,1,:,:,:],0)
+            
+            #find the interpolation grid
+            grid = F.affine_grid(theta, 
+                                 movable.shape,
+                                 align_corners=False)
+            
+            
+            
+        #apply the grid
+        x = F.grid_sample(movable, grid,
+                          align_corners=False,
+                          mode = 'bilinear')
+    
+        return x, theta
+        
+    def forward(self, fixed, movable):
+        
+        #concatenatation over the last dimension
+        concat_data = torch.cat((fixed,movable),dim=1)#.to(device)
+        #apply transformation network
+        padded_output, theta = self.stn(concat_data)
+        
+        return padded_output, theta
+
+
 #%% UNet + STN
 
 class Block(nn.Module):

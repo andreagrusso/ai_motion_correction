@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
  
-from network import AffineNet,Unet_Stn, ReSTN
+from network import AffineNet,Unet_Stn, AffineNetCoord
 from losses import NCC, regularizer_rot_matrix
 from generators import Create_train_dataset, Create_test_dataset
 from util_functions import output_processing
@@ -24,18 +24,18 @@ from online_create_pairs import create_pairs, create_pairs_for_testing
 # from dicom2nifti.convert_dicom import dicom_array_to_nifti
 # import pydicom
 #%% Data import
-# datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
-# outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
+outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
 
-datadir = '/home/ubuntu22/Desktop/ai_mc/'
-outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affine_bs1_Multidp03_ep20_aug'
+# datadir = '/home/ubuntu22/Desktop/ai_mc/'
+# outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affine_bs1_Multidp03_ep20_aug'
 #%% Import model
 
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
 # loss_fn = NCC()#nn.MSELoss()
 loss_matrix = regularizer_rot_matrix()
-model = AffineNet()#ReSTN()# #Unet_Stn()#
+model = AffineNetCoord()#ReSTN()# #Unet_Stn()#
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("The model will be running on", device, "device")
@@ -51,7 +51,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 4,
 
 #%% Set some variables
 
-max_epochs = 20
+max_epochs = 5
 batch = 1
 
 training_image_loss = dict()
@@ -82,13 +82,13 @@ for epoch in range(max_epochs):
     print('New set of pairs!')
 
     
-    training_set = Create_train_dataset(training_files, 
+    training_set = Create_train_dataset(training_files[:1000], 
                                                  (128,128,128))    
     training_generator = torch.utils.data.DataLoader(training_set, 
                                                             batch_size = batch, 
                                                             shuffle=True)
     
-    validation_set = Create_test_dataset(validation_files, (128,128,128))
+    validation_set = Create_test_dataset(validation_files[:500], (128,128,128))
     validation_generator = torch.utils.data.DataLoader(validation_set,
                                                        batch_size = batch, 
                                                        shuffle=True)
