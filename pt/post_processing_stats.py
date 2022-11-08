@@ -21,13 +21,13 @@ from moco_movie import moco_movie
 
 
 from network import AffineNet, Unet_Stn
-from generators import Create_dataset
+from generators import Create_test_dataset
 from util_functions import output_processing, ants_moco, compare_affine_params, align_and_mse
 
 #%% Data
 datadir = '/home/ubuntu22/Desktop/ai_mc/'
 model_dir = 'affine_bs1_Multidp03_ep20'
-sub = 'sub10'
+sub = 'sub_from_training'
 run = 'run7'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub+'_'+run,'ai')
 
@@ -48,7 +48,7 @@ dcms = sorted(glob.glob(os.path.join(datadir,'dcm','test', sub,run,'*.dcm' )))
 testing_files = [[tmp_dcm, dcms[0]] for tmp_dcm in dcms]
 
 #pickle.load(open(os.path.join(datadir,'dcm','dcm_'+sub+'_testing_set.pkl'),'rb'))
-testing_set = Create_dataset(testing_files, (128,128,128))
+testing_set = Create_test_dataset(testing_files, (128,128,128))
 testing_generator = torch.utils.data.DataLoader(testing_set, shuffle=False)
 
 motion_params = np.empty((len(testing_set), 6))
@@ -79,7 +79,7 @@ for fixed_test, movable_test, orig_dim in testing_generator: #just testing
     timing[i,:] = time.time()-start
     motion_params[i,:] = curr_motion
     
-    ai_output_mse[i,:] = align_and_mse(fixed_test['data'], movable_test['data'], 
+    ai_output_mse[i,:] = align_and_mse(fixed_test['data'], outputs[0].cpu() , 
                                 np.empty([]), orig_dim)
 
     
@@ -137,11 +137,7 @@ for i in range(fwd_affine.shape[2]):
     ants_output_mse[i,:] = align_and_mse(ants_aligned_data[...,0], ants_aligned_data[...,i], 
                                 np.empty([]), ants_aligned_data[...,0].shape)
     
-    # std_mse[i,:] = align_and_mse(raw_data[...,0], raw_data[...,i], 
-    #                         fwd_affine[...,i], raw_data[...,0].shape)
-    
-    # ai_mse[i,:] = align_and_mse(raw_data[...,0], raw_data[...,i], 
-    #                         all_affine[...,i], raw_data[...,0].shape)
+
     
 
 
@@ -149,6 +145,9 @@ mse_df = pd.DataFrame([], columns=['MSE', 'Vol','Method'])
 mse_df['MSE'] = list(np.vstack(( raw_mse, ai_output_mse, ants_output_mse)))
 mse_df['Method'] = len(motion_params)*['RAW'] + len(motion_params)*['AI output'] + len(motion_params)*['ANTS aligned']
 mse_df['Vol'] = 3*list(np.arange(0, len(motion_params)))
+# mse_df['MSE'] = list(np.vstack(( raw_mse, ai_output_mse)))
+# mse_df['Method'] = len(motion_params)*['RAW'] + len(motion_params)*['AI output'] 
+# mse_df['Vol'] = 2*list(np.arange(0, len(motion_params)))
 
 mse_df = mse_df.astype({"Vol": int, "MSE": float, "Method": str})
 
@@ -274,6 +273,8 @@ for j,idx in enumerate(indices):
     plt.tight_layout()
 
 plt.suptitle('Diff from backward affine')
+plt.tight_layout()
+plt.savefig(os.path.join(outdir,sub+'_'+run+'_bwd_affine_differences.svg'), dpi=300)
 
 
 
@@ -286,6 +287,8 @@ for j,idx in enumerate(indices):
     plt.tight_layout()
 
 plt.suptitle('Diff from forward affine')
+plt.tight_layout()
+plt.savefig(os.path.join(outdir,sub+'_'+run+'_fwd_affine_differences.svg'), dpi=300)
 
 f,ax = plt.subplots(1,1)
 plt.plot(motion_params[:,0])

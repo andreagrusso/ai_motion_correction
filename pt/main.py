@@ -35,7 +35,7 @@ outdir = '/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results/affine_bs1_Multidp
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
 # loss_fn = NCC()#nn.MSELoss()
 loss_matrix = regularizer_rot_matrix()
-model = Unet_Stn()#AffineNet()#ReSTN()# #
+model = AffineNet()#ReSTN()# #Unet_Stn()#
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("The model will be running on", device, "device")
