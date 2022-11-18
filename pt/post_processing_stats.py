@@ -90,8 +90,7 @@ for fixed_test, movable_test, orig_dim in testing_generator: #just testing
                         
     i +=1
 
-# plt.plot(motion_params)
-# plt.legend(['x','y','z','rx','ry','rz'])
+
 #%% Model metrics
 
 training_loss = pd.read_csv(os.path.join(datadir,'preliminary_nn_results',model_dir,'AffineNet_training_loss.csv'))

@@ -25,6 +25,20 @@ from losses import NCC
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+
+def apply_est_affine():
+    
+    """Work in progress"""
+    
+    img = nb.load('original.nii')
+    # get_base_affine gives the simplest diagonal voxels to mm mapping.
+    # You can use any affine you want - it will be the affine for the new image.
+    new_affine = img.header.get_base_affine()
+    # Get resampling routine.
+    from nibabel.processing import resample_from_to
+    # Resample image to new affine with default parameters (e.g. trilinear resampling).
+    new_img = resample_from_to(img, (img.shape, new_affine))
+    nb.save(new_img, 'reoriented.nii')
   
 
 def output_processing(movable,outputs,orig_dim):
@@ -157,19 +171,20 @@ def params2mat(params,orig_dim):
 
 
     #LPS to RAS+ (LPI)
-    lps2lpi = np.array([[1,0,0,dim_x],
-                        [0,1,0,dim_y],
-                        [0,0,-1,dim_z],
-                        [0,0,0,1]])
+    #lps2ras = np.diag([-1,-1,1,1])
+    #np.array([[1,0,0,dim_x],
+                    # [0,1,0,dim_y],
+                    # [0,0,-1,dim_z],
+                    # [0,0,0,1]])
     
     # mat2 = mat2*np.array([[1,  1, -1, -1],
     #  [1,1,-1,-1],
     #  [-1,-1, 1,  1],
     #  [1, 1,1, 1]])
-    #lps2ras = np.diag([-1,-1,1,1])
-    mat2 = np.linalg.inv(lps2lpi) @ np.linalg.inv(mat) @ lps2lpi 
+    lps2ras = np.diag([-1,-1,1,1])
+    mat2 = np.linalg.inv(lps2ras) @ np.linalg.inv(mat) @ lps2ras 
     
-    return mat[:-1,:]
+    return mat2[:-1,:]
 
 def ants_motion(params):
     
