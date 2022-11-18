@@ -21,7 +21,9 @@ from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
 from Norm2RAS import convert_mat
+from losses import NCC
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
   
 
@@ -64,9 +66,10 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
     '''This funxtion apply the affine matrix to a volume with the sicpy function 
     and then it estimates the MSE with the fixed'''
     
-    loss = torch.nn.MSELoss()
-
-    if len(fixed.shape) == 3:
+    #loss = torch.nn.MSELoss()
+    
+    #if the input are arrays
+    if type(fixed) == np.ndarray:
         #align and transoform to tensor
     
         
@@ -82,7 +85,7 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
         movable = tio.ScalarImage(tensor = movable) 
         
         transform = tio.Compose([
-            tio.transforms.ToCanonical(),
+            # tio.transforms.ToCanonical(),
             tio.transforms.RescaleIntensity(out_min_max=(0, 1)), #MinMaxscaling
             tio.transforms.Mask(masking_method=lambda x: x > torch.quantile(x,0.50)), #masking
             tio.transforms.CropOrPad((128,128,128)) #padding
@@ -91,15 +94,19 @@ def align_and_mse(fixed, movable, matrix, orig_dim):
         
         fixed = transform(fixed)
         movable = transform(movable)
+        
+        fixed = fixed['data'].to(device)
+        movable = movable['data'].to(device)
+        
     
         
         #estimathe MSe loss
-        rmse = loss(fixed['data'], movable['data'])
+        rmse = NCC(fixed, movable)
     
     
     else:  
         #the input received is the output of the network
-        rmse = loss(fixed, movable)
+        rmse = NCC(fixed, movable)
         
         
     return rmse.item()
@@ -162,7 +169,7 @@ def params2mat(params,orig_dim):
     #lps2ras = np.diag([-1,-1,1,1])
     mat2 = np.linalg.inv(lps2lpi) @ np.linalg.inv(mat) @ lps2lpi 
     
-    return mat2[:-1,:]
+    return mat[:-1,:]
 
 def ants_motion(params):
     
@@ -175,7 +182,7 @@ def ants_motion(params):
     rot_z = np.arctan2(params[0,1] / cos_rot_y, params[0,0] / cos_rot_y)
     
     return np.array([dx, dy, dz, 
-                     np.degrees(rot_x), np.degrees(rot_y), np.degrees(rot_z)]) 
+                     rot_x, rot_y, rot_z]) 
 
 
 
@@ -214,11 +221,11 @@ def ants_moco(datafile, outdir):
     data = nii.get_fdata()
     orig_dim = data.shape
     #get the fixed (first vol)
-    fixed = data[..., 0]
+    orig_fixed = data[..., 0]
     
     
     #save as nifti the reference volume
-    img = nb.Nifti1Image(fixed, header=nii.header, affine=nii.affine)
+    img = nb.Nifti1Image(orig_fixed, header=nii.header, affine=nii.affine)
     nb.save(img, os.path.join(tmp_dir, '{}_ref_vol.nii.gz'.format(basename)))
     print('...Save {} in {}'.format('{}_ref_vol.nii.gz'.format(basename), os.path.join(tmp_dir)))
     fixed = ants.image_read(os.path.join(tmp_dir, '{}_ref_vol.nii.gz'.format(basename)))
@@ -226,7 +233,7 @@ def ants_moco(datafile, outdir):
     
     
     #prepare output data
-    aligned_data = np.zeros_like(data)
+    #aligned_data = np.zeros_like(data)
     #backward matrices
     bwd_matrices = np.zeros((3,4,data.shape[-1]))
     #forward matrices
@@ -234,10 +241,13 @@ def ants_moco(datafile, outdir):
     
     bw_motion = np.zeros((data.shape[-1],6))
     fw_motion = np.zeros((data.shape[-1],6))
+    
+    mse = np.zeros((data.shape[-1]))
 
     for idx_vol in range(data.shape[-1]):
         print('Volume {}'.format(idx_vol))
         myvol = data[..., idx_vol]
+        
 
         # Save individual volumes: this step is needed since ANTS registration input must be both ANTs object.
         img = nb.Nifti1Image(myvol, header=nii.header, affine=nii.affine)
@@ -271,17 +281,17 @@ def ants_moco(datafile, outdir):
         # Step needed to read the warped image
         nii2 = nb.load(os.path.join(tmp_dir, '{}_vol_{}_warped.nii.gz'.format(basename, idx_vol)))
         mywarp = nii2.get_fdata()
-        aligned_data[..., idx_vol] = mywarp
+        mse[idx_vol] = align_and_mse(orig_fixed, mywarp, np.empty([]), orig_dim)
         
-    new_nii = new_img_like(nii,aligned_data)
-    new_nii.to_filename(os.path.join(outdir,'{}_ants_warped.nii.gz'.format(basename)))
-    print('ANTs aligned nifti saved!')
+    #new_nii = new_img_like(nii,aligned_data)
+    #new_nii.to_filename(os.path.join(outdir,'{}_ants_warped.nii.gz'.format(basename)))
+    #print('ANTs aligned nifti saved!')
     print('... Removing temporary directory')
     shutil.rmtree(tmp_dir)
     
     
         
-    return bwd_matrices, fwd_matrices, fw_motion, bw_motion, aligned_data
+    return bwd_matrices, fwd_matrices, fw_motion, bw_motion, mse
     
     
     

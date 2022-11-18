@@ -80,7 +80,8 @@ for fixed_test, movable_test, orig_dim in testing_generator: #just testing
     timing[i,:] = time.time()-start
     motion_params[i,:] = curr_motion
     
-    ai_output_mse[i,:] = align_and_mse(fixed_test['data'], outputs[0].cpu() , 
+    ai_output_mse[i,:] = align_and_mse(fixed_test['data'].to(device), 
+                                       outputs[0].to(device) , 
                                 np.empty([]), orig_dim)
 
     
@@ -121,29 +122,26 @@ plt.savefig(os.path.join(datadir,'preliminary_nn_results',model_dir,'model_losse
 #%% RMSE for both raw and ants aligned data
 ai_mse = np.zeros_like(ai_output_mse) #this MSE is estimate after the alignnment with scipy
 std_mse = np.zeros_like(ai_output_mse)
-raw_mse = np.zeros_like(ai_output_mse)
+raw_mse = []
 ants_output_mse = np.zeros_like(ai_output_mse)
 
 pre_nii = glob.glob(os.path.join(datadir,'preliminary_nn_results',model_dir,sub+'_'+run,'*nii'))
 
-bwd_affine, fwd_affine, fw_ants_motion, bw_ants_motion, ants_aligned_data = ants_moco(pre_nii[0], outdir)
+bwd_affine, fwd_affine, fw_ants_motion, bw_ants_motion, ants_output_mse = ants_moco(pre_nii[0], outdir)
 
-raw_data = nb.load(pre_nii[0]).get_fdata()
-
-for i in range(fwd_affine.shape[2]):
-    
-    raw_mse[i,:] = align_and_mse(raw_data[...,0], raw_data[...,i], 
-                            np.empty([]), raw_data[...,0].shape)
-    
-    ants_output_mse[i,:] = align_and_mse(ants_aligned_data[...,0], ants_aligned_data[...,i], 
-                                np.empty([]), ants_aligned_data[...,0].shape)
+raw_data = nb.load(pre_nii[0]).get_fdata()   
+raw_mse = np.array([align_and_mse(raw_data[...,0], raw_data[...,i], 
+                        np.empty([]), raw_data[...,0].shape) 
+           for i in range(raw_data.shape[-1])])
     
 
-    
+print('raw mse',raw_mse.shape)    
+print('ants mse',ants_output_mse.shape)    
+print('ai mse',ai_output_mse.shape)    
 
 
 mse_df = pd.DataFrame([], columns=['MSE', 'Vol','Method'])
-mse_df['MSE'] = list(np.vstack(( raw_mse, ai_output_mse, ants_output_mse)))
+mse_df['MSE'] = list(np.vstack(( raw_mse.reshape(-1,1), ai_output_mse, ants_output_mse.reshape(-1,1))))
 mse_df['Method'] = len(motion_params)*['RAW'] + len(motion_params)*['AI output'] + len(motion_params)*['ANTS aligned']
 mse_df['Vol'] = 3*list(np.arange(0, len(motion_params)))
 # mse_df['MSE'] = list(np.vstack(( raw_mse, ai_output_mse)))
@@ -327,13 +325,13 @@ plt.savefig(os.path.join(outdir,sub+'_axis_motion.svg'), dpi=300)
 
 
 #%% MoCo movie
-aligned_data = np.transpose(aligned_4D,[1,2,3,0])
-data4movie = [aligned_data, raw_data]
-output_name = sub+'_'+run +'ai_pre_and_post'
+# aligned_data = np.transpose(aligned_4D,[1,2,3,0])
+# data4movie = [aligned_data, raw_data]
+# output_name = sub+'_'+run +'ai_pre_and_post'
 
-moco_movie(data4movie, output_name, outdir)
+# moco_movie(data4movie, output_name, outdir)
 
-data4movie = [ants_aligned_data, raw_data]
-output_name = sub+'_'+run +'ants_pre_and_post'
+# data4movie = [ants_aligned_data, raw_data]
+# output_name = sub+'_'+run +'ants_pre_and_post'
 
-moco_movie(data4movie, output_name, outdir)
+# moco_movie(data4movie, output_name, outdir)
