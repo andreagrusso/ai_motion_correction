@@ -13,7 +13,7 @@ import numpy as np
 import os, torch, shutil
 import torchio as tio
 import nibabel as nb
-#import ants
+import ants
 from nilearn.image import new_img_like 
 from scipy.io import loadmat
 from scipy.ndimage import affine_transform
@@ -116,31 +116,51 @@ def compare_affine_params(affine1, affine2):
     return(abs(abs(affine1)-abs(affine2)))
 
 
-def params2mat(params):
+def params2mat(params,orig_dim):
     
     ''' Function to transform ants matrix to RAS+ space
     Inspired by https://github.com/netstim/leaddbs/blob/master/helpers/ea_antsmat2mat.m'''
     
     mat = np.eye(4)
-    c = np.eye(4)
-    
-    rot = params['AffineTransform_float_3_3'][:9].reshape(3,3)
-    c[:-1,-1] = params['fixed'].reshape(1,-1)
-    
-    
-    #translation
-    mat[:-1,-1] = params['AffineTransform_float_3_3'][9:].reshape(1,-1)
-    mat[:-1,:-1] = rot
-    #get a 3x4 matrix
-    
-    mat2 = c @ np.linalg.inv(mat) @ np.linalg.inv(c)
+    dim_x = orig_dim[0]
+    dim_y = orig_dim[1]
+    dim_z = orig_dim[2]
 
+    #c = np.eye(4)
+    
+    mat = params['AffineTransform_float_3_3'][:9].reshape(3,3)
+    m_Center = np.squeeze(params['fixed'].reshape(1,-1))
+    
+
+
+    m_Translation=np.squeeze(params['AffineTransform_float_3_3'][9:].reshape(1,-1))
+
+    m_Offset=[]
+    for i in range(3):
+        m_Offset.append(m_Translation[i] + m_Center[i])
+        #print(m_Offset)
+        for j in range(3):
+           m_Offset[i] = m_Offset[i]-(mat[i,j] * m_Center[j])  #(i,j) should remain the same since in C indexing rows before cols, too.
+        
+
+    m_Offset = np.array(m_Offset).reshape(-1,1)
+    mat= np.hstack((mat,m_Offset))
+    mat= np.vstack((mat,np.array([0,0,0,1])))
+    #print(mat)
+
+
+    #LPS to RAS+ (LPI)
+    lps2lpi = np.array([[1,0,0,dim_x],
+                        [0,1,0,dim_y],
+                        [0,0,-1,dim_z],
+                        [0,0,0,1]])
+    
     # mat2 = mat2*np.array([[1,  1, -1, -1],
     #  [1,1,-1,-1],
     #  [-1,-1, 1,  1],
     #  [1, 1,1, 1]])
-    lps2ras = np.diag([-1,-1,1,1])
-    mat2 = lps2ras @ np.linalg.inv(mat2) @ np.linalg.inv(lps2ras) 
+    #lps2ras = np.diag([-1,-1,1,1])
+    mat2 = np.linalg.inv(lps2lpi) @ np.linalg.inv(mat) @ lps2lpi 
     
     return mat2[:-1,:]
 
@@ -192,6 +212,7 @@ def ants_moco(datafile, outdir):
     #losd nifti 
     nii = nb.load(datafile)
     data = nii.get_fdata()
+    orig_dim = data.shape
     #get the fixed (first vol)
     fixed = data[..., 0]
     
@@ -229,17 +250,17 @@ def ants_moco(datafile, outdir):
         print('...Save transformation matrix')
         os.system(f"cp {mytx['fwdtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
         fwd_params = loadmat(os.path.join(outdir,'{}_vol_{}_affine.mat'.format(basename, idx_vol)))
-        fwd_matrices[...,idx_vol] = params2mat(fwd_params)
+        fwd_matrices[...,idx_vol] = params2mat(fwd_params,orig_dim)
 
 
         os.system(f"cp {mytx['invtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
         bwd_params = loadmat(os.path.join(outdir,'{}_vol_{}_affine.mat'.format(basename, idx_vol)))
-        bwd_matrices[...,idx_vol] = params2mat(bwd_params)
+        bwd_matrices[...,idx_vol] = params2mat(bwd_params,orig_dim)
         os.system(f"rm {outdir}/{basename}_vol_{idx_vol}_affine.mat")        
         
         
-        bw_motion[idx_vol,...] = ants_motion(params2mat(bwd_params))
-        fw_motion[idx_vol, ...] = ants_motion(params2mat(fwd_params))
+        bw_motion[idx_vol,...] = ants_motion(params2mat(bwd_params,orig_dim))
+        fw_motion[idx_vol, ...] = ants_motion(params2mat(fwd_params,orig_dim))
 
     
         # // Apply transformation
