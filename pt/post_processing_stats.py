@@ -25,10 +25,11 @@ from generators import Create_test_dataset
 from util_functions import output_processing, ants_moco, compare_affine_params, align_and_mse
 
 #%% Data
-datadir = '/home/ubuntu22/Desktop/ai_mc/'
+#C:\Users\NeuroIm\Documents\data\ai_motion_correction\preliminary_nn_results\affine_bs1_Multidp03_ep20
+datadir = '/mnt/c/Users/NeuroIm/Documents/data/ai_motion_correction/'
 model_dir = 'affine_bs1_Multidp03_ep20'
-sub = 'sub_from_training'
-run = 'run7'
+sub = 'sub00'
+run = 'run1'
 outdir = os.path.join(datadir,'preliminary_nn_results',model_dir,sub+'_'+run,'ai')
 
 
@@ -269,7 +270,7 @@ max_val = np.max(abs(diff_bwd_affine))
 for j,idx in enumerate(indices):
     ax[idx[0],idx[1]].plot(diff_bwd_affine[:,j])
     ax[idx[0],idx[1]].set_title('A' + str(idx) +' diff')
-    ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
+    #ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
     plt.tight_layout()
 
 plt.suptitle('Diff from backward affine')
@@ -283,7 +284,7 @@ max_val = np.max(abs(diff_fwd_affine))
 for j,idx in enumerate(indices):
     ax[idx[0],idx[1]].plot(diff_fwd_affine[:,j])
     ax[idx[0],idx[1]].set_title('A' + str(idx) +' diff')
-    ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
+    #ax[idx[0],idx[1]].set(ylim=(-max_val,max_val))
     plt.tight_layout()
 
 plt.suptitle('Diff from forward affine')
