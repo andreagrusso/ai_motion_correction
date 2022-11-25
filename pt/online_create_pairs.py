@@ -13,19 +13,21 @@ import os, glob, pickle
 import numpy as np
 
 
-def create_pairs(datadir):
+def create_pairs(datadir,nr_of_pairs):
+    
+    
     
 #############TRANING####################
 
     training_files = []
+    training_labels = []
 
     #multiple subjects
     subs = glob.glob(os.path.join(datadir,'train','sub*'))
 
-
+    sub_label = 0
     #first load, create time series, zscore, and re-write dcm
     for sub in subs:
-        
         
         #each sub contains three different experiments
         experiments = glob.glob(os.path.join(sub,'*'))
@@ -44,6 +46,9 @@ def create_pairs(datadir):
                         for i in range(0,len(dcms))]
         
             training_files += tmp_list
+            training_labels += len(tmp_list)*[sub_label]
+            sub_label += 1
+
 
     #shuffle
     np.random.shuffle(training_files)
@@ -54,7 +59,6 @@ def create_pairs(datadir):
 
     #multiple subjects
     subs = glob.glob(os.path.join(datadir,'validation','sub*'))
-
 
     #first load, create time series, zscore, and re-write dcm
     for sub in subs:
@@ -75,10 +79,26 @@ def create_pairs(datadir):
         
             validation_files += tmp_list
 
+
     #shuffle
     np.random.shuffle(validation_files)
     
-    return training_files, validation_files
+    if nr_of_pairs==-1:
+        
+        #estimate the proportion of subject's data 
+        class_sample_count = np.array([len(np.where(training_labels == lab)[0]) 
+                                       for lab in np.unique(training_labels)])
+        class_percentage = class_sample_count/np.sum(class_sample_count)
+        
+        return training_files, validation_files, class_percentage
+    
+    else:
+        #estimate the proportion of subject's data 
+        class_sample_count = np.array([len(np.where(training_labels[:nr_of_pairs] == lab)[0]) 
+                                       for lab in np.unique(training_labels[:nr_of_pairs])])
+        class_percentage = class_sample_count/np.sum(class_sample_count)
+        
+        return training_files[:nr_of_pairs], validation_files[:int(nr_of_pairs/2)], class_percentage
 
 
 

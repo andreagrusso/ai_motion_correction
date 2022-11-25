@@ -14,18 +14,21 @@ from torch.optim import Adam
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from torch.utils.data import WeightedRandomSampler
+
  
 from network import AffineNet,Unet_Stn, AffineNetCoord
 from losses import NCC, regularizer_rot_matrix
 from generators import Create_train_dataset, Create_test_dataset
+from samplers import mySampler
 from util_functions import output_processing
 from online_create_pairs import create_pairs, create_pairs_for_testing
 
 # from dicom2nifti.convert_dicom import dicom_array_to_nifti
 # import pydicom
 #%% Data import
-datadir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
-outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
+datadir = '/mnt/c/Users/NeuroIm/Documents/data/ai_motion_correction'#/home/ubuntu22/Desktop/ai_mc/'
+outdir = '/mnt/c/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_results/test'#'/home/ubuntu22/Desktop/ai_mc/preliminary_nn_results'
 
 
 # datadir = '/home/ubuntu22/Desktop/ai_mc/'
@@ -35,7 +38,7 @@ outdir = 'C:/Users/NeuroIm/Documents/data/ai_motion_correction/preliminary_nn_re
 # Define the loss function with Classification Cross-Entropy loss and an optimizer with Adam optimizer
 # loss_fn = NCC()#nn.MSELoss()
 loss_matrix = regularizer_rot_matrix()
-model = AffineNetCoord()#ReSTN()# #Unet_Stn()#
+model = AffineNet()#ReSTN()# #Unet_Stn()#
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("The model will be running on", device, "device")
@@ -52,7 +55,7 @@ lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, 4,
 #%% Set some variables
 
 max_epochs = 5
-batch = 1
+batch = 4
 
 training_image_loss = dict()
 training_matrix_loss = dict()
@@ -70,28 +73,38 @@ validation_loss = []
 train_iter = 0
 val_iter = 0
 
+nr_of_pairs = -1
 #%% Loop for training
 
 for epoch in range(max_epochs):
     
     #create training pairs on the fly
-    training_files, validation_files = create_pairs(os.path.join(datadir,'dcm'))
+    # training_files, validation_files = create_pairs(os.path.join(datadir,'dcm'))
+    training_files, validation_files, sub_weights = create_pairs(os.path.join(datadir,'dcm'),nr_of_pairs)
+    sub_weights = torch.Tensor(sub_weights)
+
     print('Training size', len(training_files))
     print('validation size', len(validation_files))
 
     print('New set of pairs!')
 
     
-    training_set = Create_train_dataset(training_files[:1000], 
-                                                 (128,128,128))    
+    training_set = Create_train_dataset(training_files,(128,128,128))
+    
+    my_sampler = WeightedRandomSampler(sub_weights.type('torch.DoubleTensor'), 
+                                       len(sub_weights))
+    
     training_generator = torch.utils.data.DataLoader(training_set, 
                                                             batch_size = batch, 
-                                                            shuffle=True)
+                                                            sampler=my_sampler)
     
-    validation_set = Create_test_dataset(validation_files[:500], (128,128,128))
+
+    
+    
+    validation_set = Create_test_dataset(validation_files, (128,128,128))
     validation_generator = torch.utils.data.DataLoader(validation_set,
-                                                       batch_size = batch, 
-                                                       shuffle=True)
+                                                        batch_size = batch, 
+                                                        shuffle=True)
     
 
     
