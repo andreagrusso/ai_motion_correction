@@ -165,8 +165,8 @@ def params2mat(params,orig_dim):
         
 
     m_Offset = np.array(m_Offset).reshape(-1,1)
-    mat= np.hstack((mat,m_Offset))
-    mat= np.vstack((mat,np.array([0,0,0,1])))
+    mat = np.hstack((mat,m_Offset))
+    mat = np.vstack((mat,np.array([0,0,0,1])))
     #print(mat)
 
 
@@ -177,12 +177,12 @@ def params2mat(params,orig_dim):
                     # [0,0,-1,dim_z],
                     # [0,0,0,1]])
     
-    # mat2 = mat2*np.array([[1,  1, -1, -1],
-    #  [1,1,-1,-1],
-    #  [-1,-1, 1,  1],
-    #  [1, 1,1, 1]])
-    lps2ras = np.diag([-1,-1,1,1])
-    mat2 = np.linalg.inv(lps2ras) @ np.linalg.inv(mat) @ lps2ras 
+    mat2 = mat*np.array([[1,  1, -1, -1],
+      [1,1,-1,-1],
+      [-1,-1, 1,  1],
+      [-1, -1,1, 1]])
+    # lps2ras = np.diag([-1,-1,1,1])
+    # mat2 = np.linalg.inv(lps2ras) @ np.linalg.inv(mat) @ lps2ras 
     
     return mat2[:-1,:]
 
@@ -276,6 +276,7 @@ def ants_moco(datafile, outdir):
         os.system(f"cp {mytx['fwdtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
         fwd_params = loadmat(os.path.join(outdir,'{}_vol_{}_affine.mat'.format(basename, idx_vol)))
         fwd_matrices[...,idx_vol] = params2mat(fwd_params,orig_dim)
+        os.system(f"rm {outdir}/{basename}_vol_{idx_vol}_affine.mat")        
 
 
         os.system(f"cp {mytx['invtransforms'][0]} {outdir}/{basename}_vol_{idx_vol}_affine.mat")
